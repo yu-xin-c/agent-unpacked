@@ -46,6 +46,14 @@ npm test
 
 静态产物生成在 `out/`，默认使用 `/agent-unpacked` 作为部署子路径。
 
+EdgeOne Pages 根路径构建：
+
+```bash
+npm run build:edgeone
+```
+
+在 EdgeOne Pages 中将构建命令设为 `npm run build:edgeone`、输出目录设为 `out`，即可从站点根路径访问；普通 `npm run build` 仍保留腾讯云服务器的 `/agent-unpacked` 子路径。
+
 ## 参考项目
 
 - [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)

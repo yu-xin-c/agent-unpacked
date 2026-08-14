@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:edgeone": "NEXT_PUBLIC_DEPLOY_TARGET=edgeone next build",
     "start": "next start",
     "test": "npm run build",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
