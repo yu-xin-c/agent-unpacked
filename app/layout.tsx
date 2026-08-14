@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://129.204.115.229/agent-unpacked";
 const title = "agent-unpacked · 五条 Agent 源码拆解路线";
-const description = "从消息、循环、工具、会话到产品组装，逐层拆解 DSH、PI Agent、nanobot、Claude Code 公开部分与 OpenClaw 的交互式源码课程。";
+const description = "从消息、循环、工具、会话到产品组装，逐层拆解 DSH、PI Agent、nanobot、Claude Code 第三方复原版与 OpenClaw 的交互式源码课程。";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),

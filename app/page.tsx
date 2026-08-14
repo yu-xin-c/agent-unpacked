@@ -413,92 +413,92 @@ const piLessons: Lesson[] = [
 
 const claudeLessons: Lesson[] = [
   {
-    id: "C01", group: "公开边界", groupColor: "#d97757", title: "SDK × CLI：公开源码到底覆盖哪一层", kicker: "Public Boundary",
-    motto: "Claude Code 核心不是完整开源项目；能可靠拆解的是官方 Agent SDK、插件、Hook 与 CLI 协议边界。",
-    why: "如果把公开 SDK 当成 Claude Code 全部内核，就会把进程桥接误读成 Agent Loop 实现。第一课先画清可验证边界：Python SDK 负责 API、类型与控制通道，实际推理由 Claude Code CLI 进程完成。",
-    model: "像遥控器与电视：遥控器的按键、电报码和状态反馈可以拆开研究，但屏幕后面的图像处理芯片仍在电视内部。",
-    flow: ["Python API", "ClaudeSDKClient", "Query", "SubprocessCLITransport", "Claude Code CLI", "Typed Messages"],
-    files: ["src/claude_agent_sdk/query.py", "src/claude_agent_sdk/client.py", "src/claude_agent_sdk/_internal/transport/subprocess_cli.py"],
-    code: `async for message in query(prompt, options):\n    handle(message)\n\n# SDK launches the official CLI\n# and exchanges newline-delimited JSON`,
-    points: ["公开范围不夸大", "SDK 与运行内核分层", "只使用官方证据"],
-    takeaway: "研究 Claude Code 时，第一件事不是猜内部 while，而是标出哪些结论能由官方公开源码直接证明。",
+    id: "C01", group: "启动与骨架", groupColor: "#d97757", title: "CLI 入口：为什么先分流，再加载完整产品", kicker: "Bootstrap / Dispatch",
+    motto: "入口文件不急着加载整个 TUI，而是先识别轻量命令、后台进程与协议模式，再动态进入完整主程序。",
+    why: "Claude Code 同时支持版本查询、ACP、后台会话、远程控制、无头输出和交互式 REPL。如果所有模块一启动就加载，简单命令也要支付完整产品的时间与内存成本。",
+    model: "像机场入口的分流大厅：转机、托运和国际出发先走不同通道，只有真正登机的旅客才进入完整安检流程。",
+    flow: ["process.argv", "Fast Paths", "Dynamic Import", "Commander Main", "Initialization", "REPL / Headless"],
+    files: ["src/entrypoints/cli.tsx", "src/main.tsx", "src/entrypoints/init.ts"],
+    code: `const args = process.argv.slice(2)\nif (isFastPath(args)) return runFastPath(args)\n\nconst { main } = await import("../main.js")\nawait main(args)`,
+    points: ["快捷路径避免重加载", "动态 import 划启动边界", "入口只分发不承载业务"],
+    takeaway: "大型 CLI 的第一层架构不是 Agent Loop，而是启动成本治理：先分流，后加载，最后才进入交互产品。",
   },
   {
-    id: "C02", group: "进程协议", groupColor: "#4f8df7", title: "Subprocess Transport：SDK 如何驱动 Claude Code", kicker: "Process / NDJSON",
-    motto: "SDK 始终使用流式模式，通过子进程 stdin/stdout 交换 NDJSON，而不是把 CLI 当普通函数调用。",
-    why: "长时间 Agent 运行会不断产生文本、工具调用、Hook 和控制消息。一次性等待进程退出无法支持中断、权限回调与实时 UI，因此 transport 必须拥有进程和双向流生命周期。",
-    model: "像演播室导播间：主持人一直在直播，导播通过耳返持续下指令，同时接收每一段现场信号。",
-    flow: ["ClaudeAgentOptions", "CLI Discovery", "Process Spawn", "stdin NDJSON", "stdout NDJSON", "Message Parser"],
-    files: ["src/claude_agent_sdk/_internal/transport/subprocess_cli.py", "src/claude_agent_sdk/_internal/query.py", "src/claude_agent_sdk/_errors.py"],
-    code: `transport = SubprocessCLITransport(prompt, options)\nawait transport.connect()\nasync for raw in transport.receive_messages():\n    yield parse_message(raw)`,
-    points: ["CLI 查找与启动", "并发读写锁", "缓冲与错误边界"],
-    takeaway: "Claude Agent SDK 的核心地基是一条可靠的双向进程协议；Agent 能力在另一端，SDK 负责把它变成可编程接口。",
+    id: "C02", group: "启动与骨架", groupColor: "#d97757", title: "QueryEngine × query：会话编排和循环为什么分开", kicker: "Product / Loop",
+    motto: "QueryEngine 管一段会话的生命周期，query() 管一轮模型—工具迭代；二者变化速度不同，所以不能揉成一个大函数。",
+    why: "产品层要处理会话记录、预算、压缩、文件快照和 SDK 事件；循环层只应关心消息、模型流、工具结果与是否继续。分开后，REPL 和 SDK 可以复用同一循环。",
+    model: "像餐厅经理与后厨：经理维护整桌体验和账单，后厨只完成一道道点单；厨房不需要知道客人从哪张桌子来。",
+    flow: ["REPL / SDK", "QueryEngine", "query()", "API Stream", "Tool Results", "Messages / Terminal"],
+    files: ["src/QueryEngine.ts", "src/query.ts", "src/utils/queryContext.ts"],
+    code: `const engine = new QueryEngine(sessionOptions)\n\nfor await (const event of query(params)) {\n  engine.record(event)\n  yield event\n}`,
+    points: ["会话与单轮分层", "生成器表达事件流", "同一循环服务多入口"],
+    takeaway: "QueryEngine 是产品级会话外壳，query 是 Agent 的运行心脏；先分清两者，才能读懂整条调用链。",
   },
   {
-    id: "C03", group: "进程协议", groupColor: "#4f8df7", title: "Message Union：把 CLI 事件变成类型世界", kicker: "Parser / Content Blocks",
-    motto: "文本、思考、工具、任务、Hook 与最终结果不是字符串日志，而是可区分、可演进的消息联合类型。",
-    why: "如果所有输出只是 console text，应用无法知道何时展示思考、何时请求权限、何时关联 tool_result，也无法兼容新增事件。parser 把原始 JSON 翻译成稳定对象。",
-    model: "像海关分流：每件包裹先看申报类型，再进入文本、工具、任务或系统事件的不同通道。",
-    flow: ["Raw JSON", "parse_message()", "Message Type", "ContentBlock", "Hook / Task Events", "Application"],
-    files: ["src/claude_agent_sdk/_internal/message_parser.py", "src/claude_agent_sdk/types.py", "tests/test_message_parser.py"],
-    code: `match data["type"]:\n    case "assistant": return AssistantMessage(...)\n    case "system": return SystemMessage(...)\n    case "result": return ResultMessage(...)`,
-    points: ["消息可判别", "内容块可组合", "未知字段向前兼容"],
-    takeaway: "真正稳定的集成面不是终端输出长什么样，而是 SDK 能否把每种生命周期事实表达成明确类型。",
+    id: "C03", group: "模型与流", groupColor: "#4f8df7", title: "API Streaming：多模型怎样汇成一条事件河", kicker: "Provider / Stream",
+    motto: "调用模型不是 await 一段文字，而是持续接收 message_start、content delta、tool_use、usage 与 stop reason。",
+    why: "流式输出要同时支撑终端刷新、工具尽早执行、超时恢复和成本统计。不同供应商又有不同协议，因此 API 层必须把路由与稳定事件语义分开。",
+    model: "像电视台接收多种制式的直播信号：先由转播车适配，再把统一画面送到演播室和观众端。",
+    flow: ["Model Choice", "Provider Route", "Request Params", "Raw Stream", "Typed Events", "Query Loop"],
+    files: ["src/services/api/claude.ts", "src/utils/model/providers.ts", "src/services/providerRegistry/switcher.ts"],
+    code: `const provider = getAPIProvider()\nconst stream = queryModelWithStreaming(request, provider)\n\nfor await (const event of stream) {\n  yield normalize(event)\n}`,
+    points: ["供应商路由独立", "原始流转稳定事件", "超时与降级有边界"],
+    takeaway: "Claude Code 的模型层不是一个 API 请求函数，而是一条兼容多供应商、可恢复、可计量的流式传输管线。",
   },
   {
-    id: "C04", group: "控制与安全", groupColor: "#a85ce5", title: "Bidirectional Control：运行中如何中断与改策略", kicker: "Control Requests",
-    motto: "持续连接的价值不只在流式输出，还在于应用能在运行中发送 interrupt、切模型、改权限与查询状态。",
-    why: "Agent 不是只读生成器。产品需要停止任务、切换 permission mode、重连 MCP、查询 context usage，SDK 因此设计了 request/response 对应的控制通道。",
-    model: "像飞机驾驶舱：仪表持续回传状态，飞行员也能随时改变航向、模式或终止某个动作。",
-    flow: ["Client Method", "Control Request", "Request ID", "CLI Handler", "Control Response", "Running Session"],
-    files: ["src/claude_agent_sdk/client.py", "src/claude_agent_sdk/_internal/query.py", "src/claude_agent_sdk/types.py"],
-    code: `await client.set_permission_mode("acceptEdits")\nawait client.set_model("claude-sonnet")\nusage = await client.get_context_usage()\nawait client.interrupt()`,
-    points: ["请求响应关联", "运行时可控", "状态查询显式化"],
-    takeaway: "流式 Agent 的完整协议必须双向：既能观察它做了什么，也能在明确边界改变它接下来怎么做。",
+    id: "C04", group: "工具系统", groupColor: "#a85ce5", title: "Tool Registry：一个函数怎样变成模型可调用能力", kicker: "Schema / Pool",
+    motto: "工具不是散落的回调：Tool 契约描述 schema、权限、执行与渲染，工具池再按模式和策略选择本轮可见能力。",
+    why: "Bash、Read、Edit、MCP 和子 Agent 的输入结构、并发属性与展示方式都不同。统一 Tool 类型以后，模型只看到 schema，循环只面对统一调用语义。",
+    model: "像应用商店：每个应用先提交名称、权限和入口，再由设备策略决定哪些应用可以出现在当前用户桌面。",
+    flow: ["Tool Definition", "buildTool", "Base Tools", "Policy Filter", "Tool Pool", "API Schema"],
+    files: ["src/Tool.ts", "src/tools.ts", "src/services/tools/toolOrchestration.ts"],
+    code: `const tool = buildTool(definition)\nconst pool = assembleToolPool(baseTools, mcpTools)\nconst visible = filterToolsByPolicy(pool, context)`,
+    points: ["定义与执行解耦", "工具池按上下文组装", "串并行属性显式"],
+    takeaway: "工具系统的关键不是会执行多少函数，而是能否用统一契约发现、筛选、编排并解释每一种能力。",
   },
   {
-    id: "C05", group: "控制与安全", groupColor: "#a85ce5", title: "Hooks × Permissions：工具执行前后谁能干预", kicker: "PreToolUse / Policy",
-    motto: "Hook 观察生命周期，Permission callback 决定一次调用能否继续；两者共同把安全策略放在工具边界。",
-    why: "文件写入、Shell 与网络访问不能只依赖模型自律。SDK 暴露 PreToolUse、PostToolUse、Stop、PreCompact 等事件，并允许回调允许、拒绝或修改工具输入。",
-    model: "像工厂质检门：原料进车间前先验权限，生产完成后再留记录；异常时可以立即叫停。",
-    flow: ["HookMatcher", "PreToolUse", "Permission Callback", "Tool Execution", "PostToolUse", "Hook Event"],
-    files: ["src/claude_agent_sdk/types.py", "examples/hooks.py", "examples/tool_permission_callback.py"],
-    code: `async def can_use_tool(name, input, context):\n    if name == "Bash" and is_risky(input):\n        return PermissionResultDeny(message="blocked")\n    return PermissionResultAllow(updated_input=input)`,
-    points: ["生命周期可观察", "调用可拒绝或改写", "策略与工具解耦"],
-    takeaway: "安全不是工具内部散落的 if；它应当成为每次能力调用必经、可记录、可组合的协议关口。",
+    id: "C05", group: "工具系统", groupColor: "#a85ce5", title: "Permissions × Hooks：工具真正执行前要过几道门", kicker: "Policy / Lifecycle",
+    motto: "模型提出 tool_use 只代表意图；schema 校验、规则匹配、用户审批、PreToolUse Hook 通过后，执行才真正发生。",
+    why: "文件写入和 Shell 不能由模型单方面授权。权限策略还要区分交互界面、后台 Agent 和协调器，而 Hook 需要在执行前后记录、修改或拒绝行为。",
+    model: "像进入实验室：先核对申请表，再刷门禁、签危险操作确认，实验结束后还要把结果写进台账。",
+    flow: ["tool_use", "Schema Validate", "Permission Rules", "PreToolUse Hook", "Execute", "PostToolUse / Result"],
+    files: ["src/services/tools/toolExecution.ts", "src/hooks/useCanUseTool.tsx", "src/services/tools/toolHooks.ts"],
+    code: `validateInput(tool, input)\nawait canUseTool(tool, input, context)\nconst updated = await runPreToolUseHooks(input)\nconst result = await tool.call(updated)`,
+    points: ["模型意图不等于授权", "权限处理按运行场景替换", "Hook 横切执行生命周期"],
+    takeaway: "Claude Code 的安全边界位于 tool_use 与真实副作用之间；每一道门都必须可解释、可拒绝、可记录。",
   },
   {
-    id: "C06", group: "控制与安全", groupColor: "#a85ce5", title: "SDK MCP Tools：Python 函数如何进入 Agent", kicker: "@tool / MCP",
-    motto: "装饰器生成 schema，进程内 MCP Server 暴露能力，CLI 仍通过标准 MCP 调用，而不是直接 import 用户函数。",
-    why: "应用希望把数据库、业务 API 或计算函数交给 Claude 使用，同时保留参数类型和进程边界。SDK 把 Python callable 包装成 MCP tool，使外部能力走统一协议。",
-    model: "像把自家厨房接入外卖平台：菜品、参数和结果都按平台协议发布，骑手不需要进入厨房内部。",
-    flow: ["@tool", "JSON Schema", "SDK MCP Server", "Initialize", "Tool Call", "Tool Result"],
-    files: ["src/claude_agent_sdk/__init__.py", "examples/mcp_calculator.py", "src/claude_agent_sdk/types.py"],
-    code: `@tool("add", "Add two numbers", {"a": float, "b": float})\nasync def add(args):\n    return {"content": [{"type": "text", "text": str(args["a"] + args["b"])}]}`,
-    points: ["类型转 JSON Schema", "进程内 MCP", "工具协议统一"],
-    takeaway: "SDK 工具不是特殊捷径；它把本地函数正规化为 MCP 能力，因而能沿用同一套发现、调用与结果语义。",
+    id: "C06", group: "上下文工程", groupColor: "#25ad7c", title: "System Prompt：模型开工前到底看见了什么", kicker: "Context Assembly",
+    motto: "系统提示不是一段常量，而是由运行模式、工具说明、环境事实、CLAUDE.md 与安全规则按缓存边界拼成的上下文。",
+    why: "同一个模型在不同项目和模式下行为不同，原因往往不在模型参数，而在系统上下文。把来源拆开，才能知道哪条规则来自产品、项目还是当前环境。",
+    model: "像演员开拍前收到的资料包：剧本、角色设定、场地规则和今天的通告单来源不同，最后才装订成一份工作手册。",
+    flow: ["Mode / Persona", "Prompt Sections", "CLAUDE.md", "System Context", "Cache Blocks", "Model Request"],
+    files: ["src/context.ts", "src/utils/systemPrompt.ts", "src/utils/claudemd.ts"],
+    code: `const systemContext = await getSystemContext()\nconst memories = await getClaudeMds()\nconst prompt = buildEffectiveSystemPrompt({\n  sections, systemContext, memories,\n})`,
+    points: ["提示来源可追踪", "项目规则独立加载", "缓存边界影响成本"],
+    takeaway: "Agent 的能力很大一部分来自上下文组装；读懂 Prompt Builder，比只盯着模型调用更接近真实行为原因。",
   },
   {
-    id: "C07", group: "会话与扩展", groupColor: "#25ad7c", title: "SessionStore：会话怎样镜像、恢复与迁移", kicker: "Transcript / Resume",
-    motto: "CLI 产生 JSONL transcript，SDK 将增量帧镜像进可替换 SessionStore，并用 project_key、session_id 与 subpath 保持层级。",
-    why: "只依赖本机文件会限制服务器部署、横向扩展和备份。SessionStore 契约让 Postgres、Redis、S3 等后端保存同样的追加式会话，并支持恢复和子 Agent transcript。",
-    model: "像银行流水异地备份：柜台仍生成原始流水，但后台持续复制到统一账本，换机器后也能从同一编号继续。",
-    flow: ["CLI Transcript", "Mirror Batcher", "SessionStore.append", "Summary Sidecar", "Resume", "Next Query"],
-    files: ["src/claude_agent_sdk/_internal/session_store.py", "src/claude_agent_sdk/_internal/transcript_mirror_batcher.py", "src/claude_agent_sdk/_internal/session_resume.py"],
-    code: `await store.append(session_key, entries)\nentries = await store.load(session_key)\nawait import_session_to_cli(entries)\n# resume with the same session id`,
-    points: ["追加式持久化", "后端可替换", "主会话与子会话分层"],
-    takeaway: "会话可迁移的关键不是复制 prompt，而是保留原始 transcript 的顺序、身份和子路径语义。",
+    id: "C07", group: "上下文工程", groupColor: "#25ad7c", title: "Compaction × Transcript：长对话怎样压缩又能恢复", kicker: "Summary / JSONL",
+    motto: "运行上下文可以被摘要缩短，但 JSONL transcript 仍保存事件链；压缩边界负责告诉恢复逻辑从哪里重建模型视图。",
+    why: "上下文窗口有限，而编码会话可能持续数小时。直接删除旧消息会破坏工具配对和恢复；只保存摘要又失去审计，因此运行视图和持久化真源必须分开。",
+    model: "像把厚案卷整理成庭审摘要：法官手边只放关键材料，档案室仍保留原件和每次整理留下的索引。",
+    flow: ["Token Estimate", "Auto-Compact Check", "Summary", "Compact Boundary", "JSONL Append", "Resume Chain"],
+    files: ["src/services/compact/autoCompact.ts", "src/services/compact/compact.ts", "src/utils/sessionStorage.ts"],
+    code: `if (await shouldAutoCompact(messages)) {\n  const summary = await compactConversation(messages)\n  await recordTranscript(compactBoundary(summary))\n}\n\nreturn buildConversationChain(transcript)`,
+    points: ["运行视图不等于历史真源", "压缩边界可恢复", "工具调用配对不能破坏"],
+    takeaway: "长会话不是简单截断数组：要同时守住 token 预算、工具语义、磁盘真源和可恢复性。",
   },
   {
-    id: "C08", group: "会话与扩展", groupColor: "#25ad7c", title: "Agents × Plugins：把工作流配置送进 CLI", kicker: "Definitions / Settings",
-    motto: "AgentDefinition、setting_sources 与 Plugin config 通过 initialize 配置进入 Claude Code，SDK 负责声明而不是重写运行时。",
-    why: "产品需要不同子 Agent、系统提示、工具集合和插件目录。如果每次都手工拼 CLI 参数，配置会不可复用；结构化 options 让应用以数据声明工作流。",
-    model: "像剧组通告单：角色、台词规则、可用道具和场地来源先写成配置，开拍时统一交给现场执行。",
-    flow: ["AgentDefinition", "ClaudeAgentOptions", "setting_sources", "Plugin Config", "Initialize", "Subagent / Skill"],
-    files: ["src/claude_agent_sdk/types.py", "examples/agents.py", "examples/plugin_example.py"],
-    code: `options = ClaudeAgentOptions(\n    agents={"reviewer": AgentDefinition(...)},\n    plugins=[{"type": "local", "path": plugin_dir}],\n    setting_sources=["project"],\n)`,
-    points: ["子 Agent 数据化", "配置来源可控", "插件目录可注入"],
-    takeaway: "公开 SDK 展示的扩展哲学是“声明能力并交给 CLI 执行”，而不是在 SDK 里复制另一套 Claude Code。",
+    id: "C08", group: "产品与扩展", groupColor: "#e69f2d", title: "REPL × MCP × Plugins：核心怎样长成 Coding 产品", kicker: "Surface / Extensions",
+    motto: "REPL 订阅会话状态并处理交互；MCP 与插件把外部工具、命令、Agent 和 Hook 合入同一产品表面。",
+    why: "一个 Agent Loop 只会产生事件，还不是可用产品。终端需要虚拟列表、权限对话框、输入队列和快捷键，扩展层还要发现、校验、连接并刷新外部能力。",
+    model: "像一座剧院：舞台机械是核心循环，观众看到的是前台、灯光、字幕和换场；外部剧团还要走统一入场与排练流程。",
+    flow: ["REPL Input", "QueryEngine Events", "React / Ink", "Permission UI", "MCP / Plugins", "Commands / Agents"],
+    files: ["src/screens/REPL.tsx", "src/services/mcp/client.ts", "src/utils/plugins/pluginLoader.ts"],
+    code: `const mcp = await getMcpToolsCommandsAndResources(configs)\nconst plugins = await loadPlugins(settings)\nconst tools = mergeTools(baseTools, mcp.tools, plugins.tools)\nrender(<REPL tools={tools} />)`,
+    points: ["UI 不接管循环", "MCP 能力统一发现", "插件在加载边界完成校验"],
+    takeaway: "Claude Code 的产品感来自外围系统协作：核心循环保持事件化，REPL 和扩展层把这些事件变成可控制的工作环境。",
   },
 ];
 
@@ -595,59 +595,59 @@ const openclawLessons: Lesson[] = [
 
 const lessonDetails: Record<string, LessonDetail> = {
   C01: {
-    architecture: "官方 Python SDK 是 Claude Code 的可编程控制层：query / client 向上提供异步 API，SubprocessCLITransport 向下启动官方 CLI。CLI 内部 Agent Loop 不在该 SDK 仓库中。",
+    architecture: "cli.tsx 是轻量分发层：版本、ACP、后台进程等快速路径先返回；只有默认产品路径才动态加载 main.tsx、初始化配置并进入 REPL 或 headless。",
     evidence: [
-      { file: "src/claude_agent_sdk/query.py", symbol: "query()", note: "一次性查询 API 创建内部 Query 与 transport，并把解析后的 Message 异步迭代给调用者。" },
-      { file: "src/claude_agent_sdk/_internal/transport/subprocess_cli.py", symbol: "SubprocessCLITransport", note: "类注释和 _find_cli / connect 路径直接证明 SDK 通过 Claude Code CLI 子进程完成实际运行。" },
+      { file: "src/entrypoints/cli.tsx", symbol: "main / fast paths", note: "沿 process.argv 的分支与动态 import 阅读，可看到轻量命令如何避免加载完整交互程序。" },
+      { file: "src/main.tsx", symbol: "Commander program / root action", note: "完整入口集中注册子命令并在默认 action 中决定 REPL、print、resume 等产品形态。" },
     ],
   },
   C02: {
-    architecture: "SubprocessCLITransport 拥有 CLI 进程、stdin/stdout/stderr 流、写锁、缓冲上限与退出错误；上层 Query 只依赖 Transport 契约，不处理操作系统细节。",
+    architecture: "QueryEngine 持有会话级状态、记录、预算与 SDK 投影；queryLoop 只持有跨迭代 State，围绕模型流、工具结果、压缩与退出原因推进一轮运行。",
     evidence: [
-      { file: "src/claude_agent_sdk/_internal/transport/subprocess_cli.py", symbol: "connect / write / receive_messages", note: "查看进程创建、NDJSON 逐行读取和写锁，能确认双向流的生命周期由 transport 独占。" },
-      { file: "src/claude_agent_sdk/_errors.py", symbol: "CLIConnectionError / ProcessError", note: "CLI 未找到、进程退出和 JSON 解码错误被区分成稳定 SDK 异常，而不是泄漏原始 stderr。" },
+      { file: "src/QueryEngine.ts", symbol: "QueryEngine / ask", note: "类注释和 ask() 展示 REPL、SDK 与会话持久化如何围绕同一查询生命周期协作。" },
+      { file: "src/query.ts", symbol: "query / queryLoop / State", note: "异步生成器和显式 State 对象把每次继续、恢复和终止的原因留在统一循环中。" },
     ],
   },
   C03: {
-    architecture: "message_parser 是不可信原始 JSON 与 SDK 类型世界之间的防腐层；types.py 定义 Message / ContentBlock 联合，上层应用不依赖 CLI 输出字符串。",
+    architecture: "API 层从 provider 选择开始，构造 system、messages、tools 与 beta 参数，再将原始流事件转换成 query 可消费的 AssistantMessage、usage 与错误语义。",
     evidence: [
-      { file: "src/claude_agent_sdk/_internal/message_parser.py", symbol: "parse_message", note: "按 user、assistant、system、result 与 stream_event 分支构造类型，并对缺失字段抛出 MessageParseError。" },
-      { file: "src/claude_agent_sdk/types.py", symbol: "AssistantMessage / ToolUseBlock / ResultMessage", note: "消息对象保留 model、usage、session_id、parent_tool_use_id 等关联信息，足以支持 UI 与状态机。" },
+      { file: "src/services/api/claude.ts", symbol: "queryModelWithStreaming / queryModel", note: "请求构建、provider 分支、stream watchdog、非流式降级与 usage 汇总都在同一传输边界收口。" },
+      { file: "src/services/providerRegistry/switcher.ts", symbol: "provider switcher", note: "供应商切换被放进独立服务，而不是让 Agent Loop 直接判断每一种第三方 API。" },
     ],
   },
   C04: {
-    architecture: "ClaudeSDKClient 通过内部 Query 维持持续会话；interrupt、set_model、set_permission_mode 与 MCP 状态查询都编码成带 request_id 的控制请求。",
+    architecture: "Tool / ToolDef 描述能力契约，tools.ts 负责基础工具与扩展工具的组装和过滤，toolOrchestration 再依据并发属性安排实际调用次序。",
     evidence: [
-      { file: "src/claude_agent_sdk/client.py", symbol: "interrupt / set_permission_mode / set_model", note: "这些公开方法不重启进程，而是调用 Query 控制接口修改当前连接中的运行时状态。" },
-      { file: "src/claude_agent_sdk/_internal/query.py", symbol: "control request routing", note: "查看 pending response 与 request id 管理，可以验证多个控制请求如何与异步响应正确配对。" },
+      { file: "src/Tool.ts", symbol: "Tool / ToolDef / buildTool", note: "类型将 input schema、权限检查、call、render 与并发提示收进同一能力契约。" },
+      { file: "src/tools.ts", symbol: "getTools / assembleToolPool / getMergedTools", note: "这里能看到基础工具、MCP、插件与 Agent 工具如何经过权限上下文形成最终可见集合。" },
     ],
   },
   C05: {
-    architecture: "HookMatcher 选择生命周期回调，can_use_tool 返回 allow / deny 结果；PreToolUse 可修改输入，PostToolUse 与 Stop 负责观察和收口。",
+    architecture: "runToolUse 在调用前校验输入并触发权限流程；useCanUseTool 按交互、协调器或 worker 场景选择处理器；toolHooks 负责前后生命周期的改写与阻断。",
     evidence: [
-      { file: "src/claude_agent_sdk/types.py", symbol: "HookMatcher / PermissionResultAllow / PermissionResultDeny", note: "类型明确列出 matcher、回调、updated_input 与 deny message，策略返回值不是约定字符串。" },
-      { file: "examples/tool_permission_callback.py", symbol: "can_use_tool", note: "官方示例展示如何按工具名和输入做允许、拒绝或改写，是最小可运行的安全边界证据。" },
+      { file: "src/services/tools/toolExecution.ts", symbol: "runToolUse / checkPermissionsAndCallTool", note: "从 schema 验证、permission decision 到 tool.call，可以追出副作用发生前的完整检查链。" },
+      { file: "src/services/tools/toolHooks.ts", symbol: "runPreToolUseHooks / runPostToolUseHooks", note: "Hook 返回值能够修改输入、拒绝调用、改写输出或产生进度事件，说明它是正式执行协议的一部分。" },
     ],
   },
   C06: {
-    architecture: "@tool 将 Python 类型转为 JSON Schema，create_sdk_mcp_server 建立进程内 MCP Server；CLI 只看到标准 server config 与 tool result。",
+    architecture: "context.ts 收集环境事实，claudemd.ts 加载项目与用户规则，buildEffectiveSystemPrompt 再按模式和章节生成最终系统提示；来源没有提前揉成一段不可追踪文本。",
     evidence: [
-      { file: "src/claude_agent_sdk/__init__.py", symbol: "tool / create_sdk_mcp_server", note: "装饰器与 server factory 展示 callable、schema、handler 如何组合成 SdkMcpTool 和 MCP 配置。" },
-      { file: "examples/mcp_calculator.py", symbol: "calculator MCP server", note: "官方计算器示例把多个 Python 函数发布给 Claude，并通过 options.mcp_servers 注入。" },
+      { file: "src/utils/systemPrompt.ts", symbol: "buildEffectiveSystemPrompt", note: "模式、Persona、附加指令与动态章节在这个组装函数中汇合，形成可测试的最终 Prompt。" },
+      { file: "src/utils/claudemd.ts", symbol: "getMemoryFiles / getClaudeMds", note: "规则文件的发现、include、过滤、长度限制和缓存都独立处理，避免项目记忆污染基础 Prompt。" },
     ],
   },
   C07: {
-    architecture: "TranscriptMirrorBatcher 从 CLI JSONL 增量收集帧，SessionStore 以 project_key / session_id / subpath 保存；resume 时再导回 CLI 可识别的会话。",
+    architecture: "autoCompact 依据上下文窗口与保留预算决定是否压缩，compact 生成摘要与边界消息，sessionStorage 继续把完整事件追加进 JSONL 并按父子关系恢复可见链。",
     evidence: [
-      { file: "src/claude_agent_sdk/_internal/session_store.py", symbol: "SessionStore / InMemorySessionStore", note: "append、load、list、delete 与 list_subkeys 定义了可替换后端必须维持的追加式语义。" },
-      { file: "src/claude_agent_sdk/_internal/transcript_mirror_batcher.py", symbol: "TranscriptMirrorBatcher", note: "批处理器解析 transcript 路径、聚合帧并写入 store，避免每个文件事件都触发一次远端写入。" },
+      { file: "src/services/compact/autoCompact.ts", symbol: "shouldAutoCompact / autoCompactIfNeeded", note: "阈值由模型窗口、输出预留和增长估计共同决定，不是固定截断最近 N 条消息。" },
+      { file: "src/utils/sessionStorage.ts", symbol: "recordTranscript / buildConversationChain", note: "追加式写入与链恢复分离，让 compact 后的模型视图和磁盘审计历史可以同时成立。" },
     ],
   },
   C08: {
-    architecture: "AgentDefinition、SdkPluginConfig 与 setting_sources 都属于 ClaudeAgentOptions；SDK 在 initialize 阶段把声明送入 CLI，由 CLI 按自己的插件与子 Agent 机制执行。",
+    architecture: "REPL 通过 React / Ink 将 QueryEngine 事件投影成可交互终端；MCP client 与 pluginLoader 在外围发现工具、命令、Hook 和 Agent，再合并进产品状态。",
     evidence: [
-      { file: "src/claude_agent_sdk/types.py", symbol: "AgentDefinition / SdkPluginConfig / ClaudeAgentOptions", note: "定义展示 prompt、tools、model、skills、plugin path 与配置来源如何被结构化表达。" },
-      { file: "examples/agents.py", symbol: "agents option", note: "官方示例创建多个不同职责的 AgentDefinition，并通过 options.agents 一次性交给运行时。" },
+      { file: "src/screens/REPL.tsx", symbol: "REPL", note: "组件集中处理消息呈现、输入队列、权限对话框、模式切换与快捷键，但不重新实现 queryLoop。" },
+      { file: "src/services/mcp/client.ts", symbol: "getMcpToolsCommandsAndResources", note: "连接管理器批量发现 MCP tools、commands 与 resources，并将外部协议对象转换成内部能力。" },
     ],
   },
   O01: {
@@ -908,13 +908,13 @@ const projects = {
     lessons: nanobotLessons,
   },
   claude: {
-    title: "拆解 Claude Code",
-    label: "Claude Code",
+    title: "拆解 Claude Code 复原版",
+    label: "Claude Code 复原版",
     accent: "#d97757",
-    intro: "基于 Anthropic 官方公开的 Agent SDK、插件与 Hook 源码，拆解 Claude Code 可验证的控制协议与运行边界。",
-    repo: "https://github.com/anthropics/claude-agent-sdk-python",
+    intro: "基于 claude-code-best 的第三方逆向复原源码，拆解 CLI 启动、QueryEngine、Agent Loop、工具权限、上下文、会话与终端产品层。",
+    repo: "https://github.com/claude-code-best/claude-code",
     branch: "main",
-    language: "Python · SDK / CLI",
+    language: "TypeScript · React Ink",
     lessons: claudeLessons,
   },
   openclaw: {
@@ -988,23 +988,23 @@ const courseOverviews: Record<ProjectKey, CourseOverviewData> = {
     tradeoffs: ["组合自由度不如 DSH 的插件树彻底", "工作流可塑性不如 PI 的扩展面开放", "规模继续增长时需要防止 Gateway 与配置层变重"],
   },
   claude: {
-    eyebrow: "ROUTE D · PUBLIC SDK BOUNDARY",
-    headline: "Claude Code 没有完整开源，我们仍然能从官方源码看懂什么？",
-    thesis: "官方 Agent SDK 没有复刻 Claude Code 的内部循环，而是把双向控制、类型化消息、权限、Hook、会话与插件暴露成稳定接口；它展示的是一条可验证的运行边界。",
-    tension: "Anthropic 的 claude-code 仓库公开插件、示例与配置，但不包含完整核心实现；这条路线因此只分析官方公开 SDK 与接口，不使用反编译或泄漏材料。",
+    eyebrow: "ROUTE D · RECONSTRUCTED CODING AGENT",
+    headline: "从 CLI 入口一路追到 Agent Loop，Coding Agent 是怎样长成产品的？",
+    thesis: "这条路线基于 claude-code-best 的 TypeScript 复原实现：CLI 负责分流，QueryEngine 拥有会话，queryLoop 驱动模型与工具，Prompt、权限、压缩和 REPL 分别守住自己的边界。",
+    tension: "该仓库不是 Anthropic 官方源码，而是项目作者明确标注的逆向工程 / 反编译复原版；它适合学习内部结构，但不能当作官方实现或官方授权版本引用。",
     principles: [
-      { title: "CLI 是明确的进程边界", detail: "Python 应用通过 SubprocessCLITransport 启动官方 CLI，以 JSON 流通信；SDK 负责控制，核心运行时仍留在 CLI 侧。" },
-      { title: "生命周期先变成类型", detail: "Assistant、User、System、Result 与 StreamEvent 组成消息联合类型，让调用者能按阶段处理运行过程，而不是解析模糊文本。" },
-      { title: "安全控制是一等协议", detail: "权限回调、Hook、MCP 工具与控制请求都沿同一双向通道工作，审批和拦截不必偷偷塞进 Prompt。" },
+      { title: "产品会话包住最小循环", detail: "QueryEngine 持有持久化、预算与事件投影，queryLoop 只推进模型—工具迭代；REPL 和 SDK 因此能复用同一运行心脏。" },
+      { title: "副作用必须经过工具协议", detail: "schema、permission、Hook、执行和 result 组成完整管线；模型给出 tool_use 并不等于真实操作已经获准。" },
+      { title: "上下文是动态投影", detail: "System Prompt、CLAUDE.md、环境事实、compact summary 与 transcript 各自保存，再按本轮需要投影给模型。" },
     ],
-    journey: ["Python App", "ClaudeSDKClient", "Control / Query", "Subprocess Transport", "Claude Code CLI", "Typed Events"],
+    journey: ["CLI / REPL", "QueryEngine", "queryLoop", "Provider Stream", "Tools / Permissions", "Transcript / UI"],
     questions: [
-      { question: "SDK 为什么同时提供 query() 与 ClaudeSDKClient？", answer: "query() 适合一次性单向请求；ClaudeSDKClient 维护双向控制通道，能在运行中发送输入、处理中断、权限和 Hook。" },
-      { question: "自定义 MCP 工具在哪里真正执行？", answer: "@tool 与 create_sdk_mcp_server 在 Python 进程内建立 SDK MCP server；CLI 通过控制协议发来调用，SDK 再执行处理函数并回传结果。" },
-      { question: "课程为什么不讲 Claude Code 内部 Agent Loop 的逐行源码？", answer: "因为完整核心没有在官方仓库公开。课程只把官方能验证的 SDK、插件、Hook 与协议边界讲透。" },
+      { question: "为什么 QueryEngine 和 query() 不是同一个类？", answer: "前者管理一段会话与产品状态，后者只处理一轮 Agent 运行；把二者分开，UI、SDK、恢复和测试都能共享循环。" },
+      { question: "模型发出 Bash tool_use 后会立刻执行吗？", answer: "不会。输入先校验，再经过权限规则、交互审批和 PreToolUse Hook，只有许可后 tool.call 才产生真实副作用。" },
+      { question: "压缩旧上下文会不会让历史永远丢失？", answer: "模型视图会用 summary 和 compact boundary 缩短，但 JSONL transcript 继续保留事件链，恢复逻辑再按边界重建可见消息。" },
     ],
-    bestFor: ["需要可靠集成 Claude Code 能力", "关心权限、Hook 与双向控制", "想学习 SDK 如何包住一个独立 Agent 运行时"],
-    tradeoffs: ["无法逐行审计 Claude Code 内部核心循环", "运行仍依赖官方 CLI", "理解重点是控制面与公开接口，而非完整实现复刻"],
+    bestFor: ["想完整追一次 Coding Agent 调用链", "关心工具权限、Prompt 与长会话", "想理解 React Ink 如何承接 Agent 事件"],
+    tradeoffs: ["第三方逆向复原，不代表 Anthropic 官方实现", "仓库规模很大，部分功能带项目自有扩展", "仓库根目录暂无许可证，学习引用需注明来源与性质"],
   },
   openclaw: {
     eyebrow: "ROUTE E · PERSONAL AGENT OS",
@@ -1031,7 +1031,7 @@ const architectureComparison = [
   { key: "dsh" as const, name: "DSH", belief: "边界必须可替换", strength: "插件组合与能力换骨", cost: "抽象密度最高" },
   { key: "pi" as const, name: "PI Agent", belief: "核心应该尽可能小", strength: "工作流可塑与会话分支", cost: "产品策略需要自己选择" },
   { key: "nanobot" as const, name: "nanobot", belief: "调用链应该直接可读", strength: "清晰分层与快速上手", cost: "组合自由度相对克制" },
-  { key: "claude" as const, name: "Claude Code", belief: "运行能力通过稳定控制协议暴露", strength: "成熟工具体验与安全边界", cost: "核心实现并未完整开源" },
+  { key: "claude" as const, name: "Claude Code 复原版", belief: "产品会话包住事件化 Agent 循环", strength: "完整 Coding Agent 调用链与交互层", cost: "第三方逆向复原且规模庞大" },
   { key: "openclaw" as const, name: "OpenClaw", belief: "个人 Agent 需要完整控制平面", strength: "跨渠道、运行时与插件生态", cost: "系统与运维复杂度最高" },
 ];
 
@@ -1657,7 +1657,7 @@ function FlowDiagram({ steps, color }: { steps: string[]; color: string }) {
 function SourceMap({ lesson, project }: { lesson: Lesson; project: ProjectKey }) {
   return (
     <article className="source-map">
-      <div className="source-intro"><span>SOURCE WALK</span><h2>从这 {lesson.files.length} 个位置开始追</h2><p>路径来自当前官方仓库的架构文档；示意代码用于突出控制流，不是逐字复制。</p></div>
+      <div className="source-intro"><span>SOURCE WALK</span><h2>从这 {lesson.files.length} 个位置开始追</h2><p>路径已经与当前课程所指向的源码仓库核对；示意代码用于突出控制流，不是逐字复制。</p></div>
       <div className="file-stack">
         {lesson.files.map((file, index) => (
           <a key={file} href={repoSourceUrl(project, file)} target="_blank" rel="noreferrer">
@@ -1679,25 +1679,25 @@ function Compare({ navigate }: { navigate: (route: RouteKey) => void }) {
     { key: "dsh", name: "DSH", subtitle: "Composable Harness" },
     { key: "pi", name: "PI Agent", subtitle: "Minimal & Extensible" },
     { key: "nanobot", name: "nanobot", subtitle: "Readable Application" },
-    { key: "claude", name: "Claude Code", subtitle: "Public SDK Boundary" },
+    { key: "claude", name: "Claude 复原版", subtitle: "Reconstructed Coding Agent" },
     { key: "openclaw", name: "OpenClaw", subtitle: "Personal Agent OS" },
   ];
   const rows = [
-    ["核心组织方式", "Cordis 插件树 + ctx", "四层包 + 极简核心", "分层 Python 模块 + 注册表", "官方 CLI + Python 控制 SDK", "Gateway + Harness + Runner + Core"],
-    ["消息入口", "Agent inbox + typed events", "AgentSession + 双消息队列", "异步 MessageBus", "query() 或双向 ClaudeSDKClient", "Channel → Gateway → Routing"],
-    ["Agent 执行", "agent-loop 插件 + turn/step", "Agent core + 事件流", "AgentLoop / AgentRunner 分工", "核心在官方 CLI；SDK 消费类型化事件", "Embedded Runner attempt loop"],
-    ["状态真源", "append-only SessionEvent", "JSONL tree + active leaf", "Session 历史 + 长期 Memory", "session_id + transcript mirror", "Sessions 持久化 + session key"],
-    ["扩展工具", "ctx.tools + waterfall 管线", "ExtensionAPI + tool hooks", "ToolRegistry / plugin entry points", "SDK MCP server + Hook / Permission", "agent-tools policy + plugin SDK"],
-    ["模型替换", "ctx.llm seam provider", "pi-ai provider stream", "Provider 接口与 registry", "通过官方 CLI 选模型与配置", "Prepared model runtime generation"],
-    ["产品组装", "Profile / Bundle / patch", "ResourceLoader + CLI / SDK / RPC", "Gateway 作为 composition root", "SDK options + plugins + agents", "Gateway 控制面 + Harness registry"],
-    ["最强教学价值", "高度可组合、边界极致显式", "最小内核、工作流完全可塑", "清晰、直接、容易追调用链", "理解独立运行时的控制协议与安全边界", "理解生产级个人 Agent 的完整控制平面"],
+    ["核心组织方式", "Cordis 插件树 + ctx", "四层包 + 极简核心", "分层 Python 模块 + 注册表", "CLI + QueryEngine + queryLoop + REPL", "Gateway + Harness + Runner + Core"],
+    ["消息入口", "Agent inbox + typed events", "AgentSession + 双消息队列", "异步 MessageBus", "REPL / print / SDK 进入 QueryEngine", "Channel → Gateway → Routing"],
+    ["Agent 执行", "agent-loop 插件 + turn/step", "Agent core + 事件流", "AgentLoop / AgentRunner 分工", "queryLoop + provider stream + tool results", "Embedded Runner attempt loop"],
+    ["状态真源", "append-only SessionEvent", "JSONL tree + active leaf", "Session 历史 + 长期 Memory", "JSONL transcript + compact boundary", "Sessions 持久化 + session key"],
+    ["扩展工具", "ctx.tools + waterfall 管线", "ExtensionAPI + tool hooks", "ToolRegistry / plugin entry points", "Tool pool + permission + Hook + MCP", "agent-tools policy + plugin SDK"],
+    ["模型替换", "ctx.llm seam provider", "pi-ai provider stream", "Provider 接口与 registry", "provider registry + stream adapter", "Prepared model runtime generation"],
+    ["产品组装", "Profile / Bundle / patch", "ResourceLoader + CLI / SDK / RPC", "Gateway 作为 composition root", "Commander + React Ink + plugins", "Gateway 控制面 + Harness registry"],
+    ["最强教学价值", "高度可组合、边界极致显式", "最小内核、工作流完全可塑", "清晰、直接、容易追调用链", "追通大型 Coding Agent 的完整产品栈", "理解生产级个人 Agent 的完整控制平面"],
   ];
   return (
     <main className="compare-page">
       <div className="compare-hero">
         <div className="eyebrow"><span /> SIDE BY SIDE · 横向对照</div>
         <h1>同一个 Agent 问题，<br /><em>五种系统答案。</em></h1>
-        <p>从 DSH 的插件树、PI 的极简核心、nanobot 的清晰分层，到 Claude Code 的公开控制协议与 OpenClaw 的完整控制平面：它们不是强弱排序，而是五种复杂度预算。</p>
+        <p>从 DSH 的插件树、PI 的极简核心、nanobot 的清晰分层，到 Claude Code 复原版的完整 Coding 产品栈与 OpenClaw 的控制平面：它们不是强弱排序，而是五种复杂度预算。</p>
       </div>
       <div className="comparison-table">
         <div className="comparison-head">
@@ -1710,10 +1710,10 @@ function Compare({ navigate }: { navigate: (route: RouteKey) => void }) {
         <div><span>如果你更关心</span><h2>如何构建可换骨架的 Harness</h2><p>先读 DSH。它把插件生命周期、事件溯源、能力 seam 与产品组合都变成一等架构概念。</p><button onClick={() => navigate("dsh")}>进入 DSH 路线 →</button></div>
         <div><span>如果你更关心</span><h2>如何把工作流选择权交给用户</h2><p>先读 PI。它用极小 Agent core、会话树和统一扩展 API，展示“少内置、多可塑”的 Coding Harness。</p><button onClick={() => navigate("pi")}>进入 PI Agent 路线 →</button></div>
         <div><span>如果你更关心</span><h2>从一个能跑的个人 Agent 学起</h2><p>先读 nanobot。调用链短，Python 模块边界直接，消息、上下文、工具和记忆都能很快找到落点。</p><button onClick={() => navigate("nanobot")}>进入 nanobot 路线 →</button></div>
-        <div><span>如果你更关心</span><h2>怎样安全控制一个独立 Agent 运行时</h2><p>读 Claude Code 公开部分。沿官方 SDK 看子进程协议、类型化事件、权限、Hook、MCP 工具与会话恢复。</p><button onClick={() => navigate("claude")}>进入 Claude Code 路线 →</button></div>
+        <div><span>如果你更关心</span><h2>大型 Coding Agent 怎样从循环长成产品</h2><p>读 Claude Code 第三方复原版。沿 CLI、QueryEngine、queryLoop、工具权限、上下文、Transcript 与 React Ink 追完整调用链。</p><button onClick={() => navigate("claude")}>进入 Claude Code 路线 →</button></div>
         <div><span>如果你更关心</span><h2>个人 Agent 如何长成生产级系统</h2><p>读 OpenClaw。Gateway、路由、Harness、Runner、prepared runtime 和插件契约会拼成一张完整系统地图。</p><button onClick={() => navigate("openclaw")}>进入 OpenClaw 路线 →</button></div>
       </section>
-      <section className="final-thesis"><small>THE THESIS</small><blockquote>DSH 换骨架；PI 交工作流；nanobot 做分层；Claude Code 暴露<em>控制协议</em>；OpenClaw 搭起<em>控制平面</em>。</blockquote></section>
+      <section className="final-thesis"><small>THE THESIS</small><blockquote>DSH 换骨架；PI 交工作流；nanobot 做分层；Claude 复原版串起<em>产品全栈</em>；OpenClaw 搭起<em>控制平面</em>。</blockquote></section>
     </main>
   );
 }
