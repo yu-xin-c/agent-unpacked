@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { headers } from "next/headers";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -13,32 +12,27 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export async function generateMetadata(): Promise<Metadata> {
-  const requestHeaders = await headers();
-  const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "localhost:3000";
-  const protocol = requestHeaders.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  const origin = `${protocol}://${host}`;
-  const title = "agent-unpacked · 拆解 DSH、PI Agent 与 nanobot";
-  const description = "从消息、循环、工具、会话到产品组装，逐层拆解 DeepSeek Harness、PI Agent 与 nanobot 的交互式源码课程。";
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://129.204.115.229/agent-unpacked";
+const title = "agent-unpacked · 拆解 DSH、PI Agent 与 nanobot";
+const description = "从消息、循环、工具、会话到产品组装，逐层拆解 DeepSeek Harness、PI Agent 与 nanobot 的交互式源码课程。";
 
-  return {
-    metadataBase: new URL(origin),
+export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
+  title,
+  description,
+  openGraph: {
     title,
     description,
-    openGraph: {
-      title,
-      description,
-      type: "website",
-      images: [{ url: `${origin}/og.png`, width: 1536, height: 1024, alt: "DSH、PI Agent 与 nanobot 架构拆解课程" }],
-    },
-    twitter: {
-      card: "summary_large_image",
-      title,
-      description,
-      images: [`${origin}/og.png`],
-    },
-  };
-}
+    type: "website",
+    images: [{ url: `${siteUrl}/og.png`, width: 1536, height: 1024, alt: "DSH、PI Agent 与 nanobot 架构拆解课程" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title,
+    description,
+    images: [`${siteUrl}/og.png`],
+  },
+};
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
