@@ -1,100 +1,55 @@
-# vinext-starter
+# agent-unpacked
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+> 来自于 **Stellar鱼** 的 Agent 源码拆解教程。
 
-## Prerequisites
+一个面向初学者的交互式学习网站，以源码证据为主线，逐层拆解 DeepSeek Harness、PI Agent 与 nanobot：消息如何进入系统、上下文怎样组装、模型如何调用工具、状态怎样留下，以及这些能力最终如何组成完整产品。
 
-- Node.js `>=22.13.0`
+## 在线阅读
 
-## Quick Start
+- 腾讯云部署：[http://129.204.115.229/agent-unpacked/](http://129.204.115.229/agent-unpacked/)
+- 示例课程：[D02 · Profile × Bundle](http://129.204.115.229/agent-unpacked/#/dsh/D02)
+
+## 教程内容
+
+- **拆 DSH**：插件内核、会话即真源、轮次边界、能力替换、上下文持续与产品组装。
+- **拆 PI Agent**：分层骨架、模型事件流、Agent Loop、工具控制、会话树与扩展机制。
+- **拆 nanobot**：消息总线、执行循环、上下文、模型与工具、记忆和产品边界。
+- **横向对照**：使用统一问题比较三套 Agent 架构的设计取舍。
+
+全站包含 24 节课程。每节课程都提供：
+
+1. 面向小白的问题解释和生活类比；
+2. 关键术语的通俗说明；
+3. 可播放、暂停、点击和重播的运行流程动画；
+4. 教学示意代码与阅读顺序；
+5. 可跳转到官方仓库的代码证据；
+6. 架构定位、常见误区、动手练习和自测答案。
+
+## 本地运行
+
+需要 Node.js 22 或更高版本。
 
 ```bash
 npm install
 npm run dev
-npm run build
 ```
 
-This starter does not use `wrangler.jsonc`.
+生产构建：
 
-## Included Shape
-
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-Signed-in visitors receive both `oai-authenticated-user-id` and `oai-authenticated-user-email`. Private Sites require every visitor to sign in; public Sites may also have anonymous visitors, for whom neither header is present.
-
-The user ID is stable for the same user on the same Site and different across Sites. Email and name are intended for display or contact purposes.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const userId = requestHeaders.get("oai-authenticated-user-id");
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```bash
+npm test
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+静态产物生成在 `out/`，默认使用 `/agent-unpacked` 作为部署子路径。
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
+## 参考项目
 
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
+- [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)
+- [badlogic/pi-mono](https://github.com/badlogic/pi-mono)
+- [HKUDS/nanobot](https://github.com/HKUDS/nanobot)
 
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
+## 作者
 
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
+教程策划与整理：**Stellar鱼**。
 
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
-
-## Useful Commands
-
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
-
-## Learn More
-
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+本项目用于源码学习与架构研究。相关项目的源码与商标归各自作者和组织所有。

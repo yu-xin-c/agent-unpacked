@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 
 type ProjectKey = "dsh" | "pi" | "nanobot";
 type RouteKey = "home" | ProjectKey | "compare";
@@ -673,9 +673,7 @@ function Header({
   setMenuOpen: (value: boolean) => void;
 }) {
   const [dark, setDark] = useState(false);
-  const sourceRepo = route === "dsh" || route === "pi" || route === "nanobot"
-    ? projects[route].repo
-    : projects.dsh.repo;
+  const sourceRepo = "https://github.com/yu-xin-c/agent-unpacked";
 
   useEffect(() => {
     const saved = window.localStorage.getItem("agent-unpacked-theme") === "dark";
@@ -694,8 +692,10 @@ function Header({
     <header className="topbar">
       <button className="brand" onClick={() => navigate("home")} aria-label="返回首页">
         <span className="brand-mark"><i /><i /></span>
-        <span className="brand-name">agent-unpacked</span>
-        <span className="brand-sub">拆开 Agent，看见系统</span>
+        <span className="brand-copy">
+          <span className="brand-name">agent-unpacked</span>
+          <span className="brand-sub">来自于 Stellar鱼 的教程</span>
+        </span>
       </button>
       <button className="mobile-menu" aria-label="打开导航" onClick={() => setMenuOpen(!menuOpen)}>☰</button>
       <nav className={menuOpen ? "topnav open" : "topnav"} aria-label="主导航">
@@ -708,7 +708,7 @@ function Header({
         ] as [RouteKey, string][]).map(([key, label]) => (
           <button key={key} className={route === key ? "active" : ""} onClick={() => navigate(key)}>{label}</button>
         ))}
-        <a className="github-button" href={sourceRepo} target="_blank" rel="noreferrer" aria-label="查看当前项目 GitHub">GH</a>
+        <a className="github-button" href={sourceRepo} target="_blank" rel="noreferrer" aria-label="查看 Stellar鱼 教程 GitHub">GH</a>
         <button className="theme-button" onClick={toggleTheme} aria-label="切换明暗主题">{dark ? "☀" : "◐"}</button>
       </nav>
     </header>
@@ -872,8 +872,8 @@ function CoursePage({
 
       <aside className="lesson-rail">
         <div className="rail-progress"><span>路线进度</span><b>{String(index + 1).padStart(2, "0")} / {String(data.lessons.length).padStart(2, "0")}</b><i><em style={{ width: `${((index + 1) / data.lessons.length) * 100}%`, background: data.accent }} /></i></div>
-        <div className="rail-toc"><span>本页</span><a href="#why">为什么需要</a><a href="#model">心智模型</a><a href="#flow">运行路径</a><a href="#evidence">代码证据</a><a href="#architecture">架构定位</a><a href="#takeaway">一句话带走</a></div>
-        <div className="rail-note"><span>源码阅读提示</span><p>先找到边界，再追实现。优先看输入、状态拥有者和失败出口。</p></div>
+        <div className="rail-toc"><span>本页</span><a href="#start">小白导读</a><a href="#terms">先认术语</a><a href="#flow">动画运行路径</a><a href="#code-tour">逐行看代码</a><a href="#evidence">源码证据</a><a href="#architecture">架构定位</a><a href="#practice">练习与自测</a><a href="#takeaway">一句话带走</a></div>
+        <div className="rail-note"><span>给第一次读源码的你</span><p>看不懂全部代码很正常。先认输入与输出，再找中间是谁接手，最后才看实现细节。</p></div>
       </aside>
     </div>
   );
@@ -885,25 +885,94 @@ function repoSourceUrl(project: ProjectKey, file: string) {
   return `${data.repo}/${targetType}/${data.branch}/${file}`;
 }
 
+const glossaryRules: Array<{ match: RegExp; meaning: string }> = [
+  { match: /session|history|jsonl|trajectory/i, meaning: "会话与历史记录：负责把已经发生的消息、工具结果和状态保存下来，方便恢复与回放。" },
+  { match: /inbound|outbound|message|response/i, meaning: "系统里流动的一条标准消息。统一格式后，上下游就不必知道它最初来自哪个界面或模型。" },
+  { match: /channel|websocket|delivery/i, meaning: "连接外部世界的入口或出口，负责收消息、做格式翻译，再把结果送回用户。" },
+  { match: /bus|queue|inbox/i, meaning: "消息的中转站。生产者把任务放进去，消费者按顺序取走，从而避免模块直接绑死。" },
+  { match: /memory|dream|soul|user/i, meaning: "比单轮对话更长期的信息，例如用户偏好、Agent 身份或从历史中提炼出的稳定事实。" },
+  { match: /context|prompt|agents|skills/i, meaning: "模型在这一轮真正能看到的材料集合；它是按规则组装出来的视图，不等于全部存储内容。" },
+  { match: /provider|model|llm|stream/i, meaning: "模型适配层与流式响应：把不同厂商的接口差异翻译成系统内部统一事件。" },
+  { match: /tool|handler|schema|discovery/i, meaning: "Agent 可调用的外部能力。Schema 告诉模型怎么调用，Handler 负责真正执行。" },
+  { match: /profile|bundle|patch|plugin|cordis|ctx/i, meaning: "可组合的功能模块或配置单元。系统通过安装、叠加和覆盖这些单元形成不同产品。" },
+  { match: /turn|step|loop|runner|agent/i, meaning: "Agent 的执行边界：接收输入、请求模型、处理工具调用，并决定继续一轮还是结束。" },
+  { match: /scope|seam|service/i, meaning: "能力的边界与作用范围，用来决定谁提供实现、谁能使用，以及什么时候回收。" },
+  { match: /compact|summary|token|visibility/i, meaning: "上下文预算治理：决定保留什么、压缩什么，以及本轮哪些历史对模型可见。" },
+  { match: /gateway|manager|cron|api|web/i, meaning: "产品外围的长期服务，负责启动、连接、定时任务和关闭，但不直接承担模型推理。" },
+  { match: /final|result|future/i, meaning: "这条路径的输出。它可能直接展示给用户，也可能成为下一次循环的新输入。" },
+];
+
+function explainTerm(term: string) {
+  return glossaryRules.find((rule) => rule.match.test(term))?.meaning
+    ?? "流程中的一个职责节点。先观察它接收什么，再观察它把什么交给下一步，就能理解它的边界。";
+}
+
+function explainFlowStep(steps: string[], index: number) {
+  const current = steps[index];
+  const previous = steps[index - 1];
+  const next = steps[index + 1];
+  if (index === 0) return `请求从 ${current} 进入。这里先收集原始输入，并准备交给 ${next}。`;
+  if (index === steps.length - 1) return `${current} 收拢前面各层的处理结果，形成用户或下一轮能够继续使用的输出。`;
+  return `${current} 接过 ${previous} 的结果，只完成自己的职责，再把标准化后的结果交给 ${next}。`;
+}
+
 function Lecture({ lesson, project }: { lesson: Lesson; project: ProjectKey }) {
   const detail = lessonDetails[lesson.id];
 
   return (
     <article className="lecture">
-      <section id="why">
+      <section id="start">
         <div className="section-number">01</div>
-        <div><h2>为什么需要这一层</h2><p>{lesson.why}</p></div>
+        <div className="section-wide">
+          <h2>小白导读：这节课到底讲什么</h2>
+          <p className="section-lead">先别急着钻进源码。我们先用“问题—类比—目标”三步建立直觉，知道自己到底要找什么。</p>
+          <div className="beginner-overview">
+            <div><small>如果没有这一层</small><h3>系统会先乱在哪里？</h3><p>{lesson.why}</p></div>
+            <div><small>生活中的类比</small><h3>把它想成什么？</h3><p>{lesson.model}</p></div>
+            <div><small>学完本课</small><h3>你应该能说清</h3><p>{lesson.motto}</p></div>
+          </div>
+        </div>
       </section>
-      <section id="model">
+      <section id="terms">
         <div className="section-number">02</div>
-        <div><h2>心智模型</h2><div className="mental-model"><span>↳</span><p>{lesson.model}</p></div></div>
+        <div className="section-wide">
+          <h2>先认几个术语，再看流程</h2>
+          <p className="section-lead">不用背定义。只要能分清每个词“负责什么、不负责什么”，后面的代码就会容易很多。</p>
+          <div className="glossary-grid">
+            {lesson.flow.slice(0, 4).map((term, index) => (
+              <div key={term}><span>{String(index + 1).padStart(2, "0")}</span><strong>{term}</strong><p>{explainTerm(term)}</p></div>
+            ))}
+          </div>
+        </div>
       </section>
       <section id="flow">
         <div className="section-number">03</div>
-        <div className="section-wide"><h2>运行路径</h2><FlowDiagram steps={lesson.flow} color={lesson.groupColor} /></div>
+        <div className="section-wide">
+          <h2>动画演示：一个请求怎样跑完整条链路</h2>
+          <p className="section-lead">观察亮起的节点。每一步只接手上一层的结果，完成自己的职责，再把标准化结果交给下一层。</p>
+          <FlowDiagram steps={lesson.flow} color={lesson.groupColor} />
+        </div>
+      </section>
+      <section id="code-tour">
+        <div className="section-number">04</div>
+        <div className="section-wide">
+          <h2>把流程翻译成代码</h2>
+          <p className="section-lead">下面是为了教学简化过的控制流，不要求你先懂语法。按照右侧顺序找输入、处理、等待和输出即可。</p>
+          <div className="beginner-code-tour">
+            <div className="annotated-code" aria-label={`${lesson.id} 教学示意代码`}>
+              <div><span>concept sketch</span><b>{lesson.id.toLowerCase()}_flow</b></div>
+              <pre><code>{lesson.code.split("\n").map((line, index) => <span key={`${line}-${index}`}><i>{String(index + 1).padStart(2, "0")}</i>{line || " "}</span>)}</code></pre>
+            </div>
+            <ol className="code-reading-guide">
+              <li><span>1</span><p><b>先找输入</b>从 <code>{lesson.flow[0]}</code> 开始，不要一上来研究每个函数。</p></li>
+              <li><span>2</span><p><b>再找接力</b>关注变量传给了谁，以及哪里出现 <code>await</code>、事件或回调。</p></li>
+              <li><span>3</span><p><b>最后找出口</b>确认结果怎样抵达 <code>{lesson.flow.at(-1)}</code>，以及失败时会在哪里停住。</p></li>
+            </ol>
+          </div>
+        </div>
       </section>
       <section id="evidence">
-        <div className="section-number">04</div>
+        <div className="section-number">05</div>
         <div className="section-wide">
           <h2>代码证据</h2>
           <p className="section-lead">不要只记结论。打开下面两个位置，沿着符号与调用方各追一层，就能在源码里验证这一课的边界。</p>
@@ -920,7 +989,7 @@ function Lecture({ lesson, project }: { lesson: Lesson; project: ProjectKey }) {
         </div>
       </section>
       <section id="architecture">
-        <div className="section-number">05</div>
+        <div className="section-number">06</div>
         <div className="section-wide">
           <h2>放回整体架构</h2>
           <div className="architecture-card" style={{ borderColor: lesson.groupColor }}>
@@ -933,11 +1002,41 @@ function Lecture({ lesson, project }: { lesson: Lesson; project: ProjectKey }) {
         </div>
       </section>
       <section>
-        <div className="section-number">06</div>
+        <div className="section-number">07</div>
         <div className="section-wide"><h2>这一层解决了什么</h2><div className="point-grid">{lesson.points.map((point, index) => <div key={point}><span>0{index + 1}</span><b>{point}</b></div>)}</div></div>
       </section>
+      <section id="practice">
+        <div className="section-number">08</div>
+        <div className="section-wide">
+          <h2>常见误区、动手练习与自测</h2>
+          <div className="pitfall-list">
+            <div><span>误区 01</span><p>把“{lesson.title.split("：")[0]}”理解成整个系统。它只是链路中的一个职责边界，前后仍然需要别的模块配合。</p></div>
+            <div><span>误区 02</span><p>把流程图的箭头理解成函数一定直接互调。源码里也可能通过事件、队列、注册表或依赖注入完成接力。</p></div>
+            <div><span>误区 03</span><p>试图第一次就读懂所有实现。小白更适合先追一条成功路径，再单独补错误、并发和生命周期分支。</p></div>
+          </div>
+          <div className="practice-lab">
+            <div>
+              <small>10 MINUTE LAB</small>
+              <h3>跟着源码做一次“小侦探”</h3>
+              <ol>
+                <li>打开 <code>{detail.evidence[0].file}</code>，搜索 <code>{detail.evidence[0].symbol}</code>。</li>
+                <li>找到它的输入来自哪里，并写下上游节点：<code>{lesson.flow[0]}</code>。</li>
+                <li>找到结果交给谁，并写下最终出口：<code>{lesson.flow.at(-1)}</code>。</li>
+                <li>用“谁拥有状态、谁只做转换”总结这层边界。</li>
+              </ol>
+            </div>
+            <div className="self-check">
+              <small>SELF CHECK</small>
+              <h3>点开答案前，先用自己的话说</h3>
+              <details><summary>Q1：这一层为什么存在？</summary><p>{lesson.why}</p></details>
+              <details><summary>Q2：输入和输出分别是什么？</summary><p>输入从 <code>{lesson.flow[0]}</code> 进入，经过中间职责节点，最终抵达 <code>{lesson.flow.at(-1)}</code>。</p></details>
+              <details><summary>Q3：整体架构里由谁拥有它？</summary><p>{detail.architecture}</p></details>
+            </div>
+          </div>
+        </div>
+      </section>
       <section id="takeaway">
-        <div className="section-number">07</div>
+        <div className="section-number">09</div>
         <div className="section-wide"><h2>一句话带走</h2><div className="takeaway">{lesson.takeaway}</div></div>
       </section>
     </article>
@@ -945,14 +1044,49 @@ function Lecture({ lesson, project }: { lesson: Lesson; project: ProjectKey }) {
 }
 
 function FlowDiagram({ steps, color }: { steps: string[]; color: string }) {
+  const stepKey = steps.join("→");
+  const [activeStep, setActiveStep] = useState(0);
+  const [playing, setPlaying] = useState(false);
+
+  useEffect(() => {
+    setActiveStep(0);
+    setPlaying(!window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  }, [stepKey]);
+
+  useEffect(() => {
+    if (!playing) return;
+    const timer = window.setTimeout(() => {
+      if (activeStep >= steps.length - 1) setPlaying(false);
+      else setActiveStep((current) => current + 1);
+    }, 1350);
+    return () => window.clearTimeout(timer);
+  }, [activeStep, playing, steps.length]);
+
+  const replay = () => {
+    setActiveStep(0);
+    setPlaying(true);
+  };
+
   return (
-    <div className="flow-diagram">
-      {steps.map((step, index) => (
-        <div className="flow-fragment" key={step}>
-          <div className="flow-node"><small>{String(index + 1).padStart(2, "0")}</small><strong>{step}</strong><i style={{ background: color }} /></div>
-          {index < steps.length - 1 && <span className="flow-arrow">→</span>}
+    <div className="flow-player" style={{ "--flow-color": color } as CSSProperties}>
+      <div className="flow-controls">
+        <span>STEP {String(activeStep + 1).padStart(2, "0")} / {String(steps.length).padStart(2, "0")}</span>
+        <div>
+          <button type="button" onClick={() => setPlaying((current) => !current)}>{playing ? "暂停" : "继续"}</button>
+          <button type="button" onClick={replay}>重播</button>
         </div>
-      ))}
+      </div>
+      <div className="flow-diagram" aria-label={`运行路径，当前步骤 ${activeStep + 1}：${steps[activeStep]}`}>
+        {steps.map((step, index) => (
+          <div className={`flow-fragment ${index < activeStep ? "done" : ""} ${index === activeStep ? "active" : ""}`} key={step}>
+            <button type="button" className="flow-node" aria-current={index === activeStep ? "step" : undefined} onClick={() => { setActiveStep(index); setPlaying(false); }}>
+              <small>{String(index + 1).padStart(2, "0")}</small><strong>{step}</strong><i />
+            </button>
+            {index < steps.length - 1 && <span className="flow-arrow">→</span>}
+          </div>
+        ))}
+      </div>
+      <div className="flow-caption" aria-live="polite"><span>当前发生</span><strong>{steps[activeStep]}</strong><p>{explainFlowStep(steps, activeStep)}</p></div>
     </div>
   );
 }
