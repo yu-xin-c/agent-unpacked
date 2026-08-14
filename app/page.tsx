@@ -30,6 +30,18 @@ type LessonDetail = {
   }>;
 };
 
+type CourseOverviewData = {
+  eyebrow: string;
+  headline: string;
+  thesis: string;
+  tension: string;
+  principles: Array<{ title: string; detail: string }>;
+  journey: string[];
+  questions: Array<{ question: string; answer: string }>;
+  bestFor: string[];
+  tradeoffs: string[];
+};
+
 const nanobotLessons: Lesson[] = [
   {
     id: "N01",
@@ -603,6 +615,72 @@ const projects = {
   },
 } as const;
 
+const courseOverviews: Record<ProjectKey, CourseOverviewData> = {
+  dsh: {
+    eyebrow: "ROUTE A · COMPOSABLE HARNESS",
+    headline: "如果 Agent 的骨架也能随时替换，会发生什么？",
+    thesis: "DSH 的核心设计不是“多做几个插件”，而是把模型、工具、会话、循环与产品入口都放进同一棵可组合、可撤销的插件树。",
+    tension: "普通框架通常先造一个稳定核心，再给外围留扩展点；DSH 反过来问：为什么核心本身不能也是插件？",
+    principles: [
+      { title: "一切能力都可组合", detail: "模型、工具、Session、Agent Loop 和 UI 没有谁拥有永久特权，它们都通过 ctx 安装和协作。" },
+      { title: "副作用必须能撤回", detail: "监听器、服务与资源跟随 scope 生命周期；卸载插件时，它留下的行为也应该一起消失。" },
+      { title: "产品是一棵配置树", detail: "Profile 选择形态，Bundle 展开能力，patch 精确覆盖节点；Web 与 Headless 只是不同组合。" },
+    ],
+    journey: ["Surface", "Profile / Bundle", "Context", "Agent Loop", "LLM / Tools", "SessionEvent"],
+    questions: [
+      { question: "所有东西都是插件，启动顺序会不会失控？", answer: "Profile、Bundle 与稳定 id 把组合顺序显式化；Cordis scope 再负责生命周期与回收。" },
+      { question: "为什么会话真源不是 messages 数组？", answer: "messages 只是模型视图；追加式 SessionEvent 才能同时支持回放、分支、UI 轨迹与审计。" },
+      { question: "换一个沙箱，为什么不必重写所有工具？", answer: "工具消费统一 seam；在局部 scope 替换 provider，就能让整组消费者进入新的执行世界。" },
+    ],
+    bestFor: ["需要多产品形态共享同一内核", "需要替换模型、文件系统或执行环境", "重视生命周期、审计与可恢复性"],
+    tradeoffs: ["抽象密度高，初读源码不如线性调用直接", "插件顺序与作用域需要严格设计", "小项目可能暂时用不到全部组合能力"],
+  },
+  pi: {
+    eyebrow: "ROUTE B · MINIMAL AGENT CORE",
+    headline: "如果核心只保留循环，工作流应该放在哪里？",
+    thesis: "PI Agent 把 Agent core 压到最小：核心负责状态与工具循环，模型差异、会话策略、资源发现和终端体验全部留给外围层与扩展。",
+    tension: "很多 Coding Agent 把审批、计划、子任务和 UI 策略写进核心；PI 选择克制，让使用者与扩展决定“Agent 应该怎样工作”。",
+    principles: [
+      { title: "核心只承诺生命周期", detail: "Agent core 处理 prompt、流事件、tool call 和停止条件，但不替上层决定完整产品工作流。" },
+      { title: "模型先统一成事件流", detail: "不同厂商先被 pi-ai 翻译成稳定词汇，上层只消费 start、delta、toolcall、done 与 error。" },
+      { title: "会话与扩展属于产品层", detail: "AgentSession、JSONL tree 与 ExtensionAPI 共同提供可操控、可分支、可重载的使用体验。" },
+    ],
+    journey: ["CLI / SDK", "AgentSession", "Agent Core", "pi-ai Stream", "Tool Hooks", "JSONL Branch"],
+    questions: [
+      { question: "一个很小的 Agent core，为什么仍能长成功能完整的 Coding Agent？", answer: "外围 AgentSession 持有资源、队列与会话，ExtensionAPI 再把工具、命令、事件和 UI 挂进来。" },
+      { question: "用户在 Agent 运行中继续输入，会打断还是排队？", answer: "steering 与 follow-up 是两种明确队列语义，决定新消息在当前循环的哪个边界介入。" },
+      { question: "为什么 JSONL 能同时表示历史和分支？", answer: "每行节点记录 id 与 parentId，当前 leaf 选择可见路径；创建分支无需复制整份会话。" },
+    ],
+    bestFor: ["希望完全掌控 Coding Agent 工作流", "需要接入多模型与自定义消息", "喜欢小内核、强扩展和可读会话文件"],
+    tradeoffs: ["许多产品策略需要使用者自己选择", "外围扩展多时要管理好约定与资源优先级", "极简核心不会自动替你提供完整平台能力"],
+  },
+  nanobot: {
+    eyebrow: "ROUTE C · READABLE APPLICATION",
+    headline: "一个轻量 Agent，怎样避免长成一团大循环？",
+    thesis: "nanobot 的核心价值是清晰分层：Channel 翻译外部协议，MessageBus 解耦入口，ContextBuilder 组装世界，Runner 执行模型与工具，Gateway 拥有长期服务。",
+    tension: "轻量项目最容易把渠道、Prompt、模型、工具和记忆塞进同一个文件；nanobot 展示了如何保持调用链短，同时不牺牲产品边界。",
+    principles: [
+      { title: "先统一消息，再接渠道", detail: "飞书、终端或 Web 都先变成 InboundMessage；Agent 不需要知道消息原本来自哪里。" },
+      { title: "编排与执行分两层", detail: "AgentLoop 管一轮产品交互，AgentRunner 管模型—工具迭代，路由问题和推理问题因此容易分开排查。" },
+      { title: "长期服务由 Gateway 拥有", detail: "Channel、API、Cron 与 Memory 有明确启动和关闭位置，AgentRunner 不会被基础设施职责污染。" },
+    ],
+    journey: ["Channel", "MessageBus", "ContextBuilder", "AgentRunner", "Provider / Tools", "Delivery / Memory"],
+    questions: [
+      { question: "为什么 Channel 不直接调用 Agent？", answer: "异步 MessageBus 把渠道生命周期与推理解耦，同一 Agent 才能被多个入口复用。" },
+      { question: "ContextBuilder 和 Session 有什么区别？", answer: "Session 保存事实；ContextBuilder 决定本轮从人格、项目、记忆与历史中取哪些材料给模型看。" },
+      { question: "长期记忆为什么不能等于完整聊天记录？", answer: "原始历史噪声大且成本高；Dream 只把稳定事实和可复用流程沉淀为可检查的长期知识。" },
+    ],
+    bestFor: ["第一次系统阅读个人 Agent 源码", "希望快速追通消息到回复的调用链", "需要多渠道、记忆与定时任务的轻量产品"],
+    tradeoffs: ["组合自由度不如 DSH 的插件树彻底", "工作流可塑性不如 PI 的扩展面开放", "规模继续增长时需要防止 Gateway 与配置层变重"],
+  },
+};
+
+const architectureComparison = [
+  { key: "dsh" as const, name: "DSH", belief: "边界必须可替换", strength: "插件组合与能力换骨", cost: "抽象密度最高" },
+  { key: "pi" as const, name: "PI Agent", belief: "核心应该尽可能小", strength: "工作流可塑与会话分支", cost: "产品策略需要自己选择" },
+  { key: "nanobot" as const, name: "nanobot", belief: "调用链应该直接可读", strength: "清晰分层与快速上手", cost: "组合自由度相对克制" },
+];
+
 function routeFromHash(): RouteKey {
   if (typeof window === "undefined") return "home";
   const route = window.location.hash.replace("#/", "").split("/")[0];
@@ -612,7 +690,7 @@ function routeFromHash(): RouteKey {
 
 export default function Home() {
   const [route, setRoute] = useState<RouteKey>("home");
-  const [lessonId, setLessonId] = useState<Record<ProjectKey, string>>({ dsh: "D01", pi: "P01", nanobot: "N01" });
+  const [lessonId, setLessonId] = useState<Record<ProjectKey, string | null>>({ dsh: null, pi: null, nanobot: null });
   const [tab, setTab] = useState<"lecture" | "source">("lecture");
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -621,9 +699,9 @@ export default function Home() {
       const next = routeFromHash();
       setRoute(next);
       const bits = window.location.hash.replace("#/", "").split("/");
-      if ((next === "dsh" || next === "pi" || next === "nanobot") && bits[1]) {
-        const valid = projects[next].lessons.some((lesson) => lesson.id === bits[1]);
-        if (valid) setLessonId((current) => ({ ...current, [next]: bits[1] }));
+      if (next === "dsh" || next === "pi" || next === "nanobot") {
+        const valid = bits[1] && projects[next].lessons.some((lesson) => lesson.id === bits[1]);
+        setLessonId((current) => ({ ...current, [next]: valid ? bits[1] : null }));
       }
       setMenuOpen(false);
       window.scrollTo({ top: 0, behavior: "instant" });
@@ -643,6 +721,11 @@ export default function Home() {
     window.location.hash = `#/${project}/${id}`;
   };
 
+  const showOverview = (project: ProjectKey) => {
+    setLessonId((current) => ({ ...current, [project]: null }));
+    window.location.hash = `#/${project}`;
+  };
+
   return (
     <div className="site-shell">
       <Header route={route} navigate={navigate} menuOpen={menuOpen} setMenuOpen={setMenuOpen} />
@@ -652,6 +735,7 @@ export default function Home() {
           projectKey={route}
           selectedId={lessonId[route]}
           selectLesson={selectLesson}
+          showOverview={showOverview}
           tab={tab}
           setTab={setTab}
         />
@@ -807,18 +891,20 @@ function CoursePage({
   projectKey,
   selectedId,
   selectLesson,
+  showOverview,
   tab,
   setTab,
 }: {
   projectKey: ProjectKey;
-  selectedId: string;
+  selectedId: string | null;
   selectLesson: (project: ProjectKey, id: string) => void;
+  showOverview: (project: ProjectKey) => void;
   tab: "lecture" | "source";
   setTab: (tab: "lecture" | "source") => void;
 }) {
   const data = projects[projectKey];
-  const lesson = data.lessons.find((item) => item.id === selectedId) ?? data.lessons[0];
-  const index = data.lessons.findIndex((item) => item.id === lesson.id);
+  const lesson = selectedId ? data.lessons.find((item) => item.id === selectedId) ?? null : null;
+  const index = lesson ? data.lessons.findIndex((item) => item.id === lesson.id) : -1;
   const groups = useMemo(() => [...new Set(data.lessons.map((item) => item.group))], [data.lessons]);
 
   return (
@@ -829,6 +915,9 @@ function CoursePage({
           <strong>{data.title}</strong>
           <span>{data.language}</span>
         </div>
+        <button className={`overview-nav-button ${lesson ? "" : "selected"}`} onClick={() => showOverview(projectKey)}>
+          <span>00</span><b>路线总览 · 先看全局</b>
+        </button>
         <nav aria-label={`${data.label} 课程目录`}>
           {groups.map((group) => {
             const lessons = data.lessons.filter((item) => item.group === group);
@@ -836,7 +925,7 @@ function CoursePage({
               <div className="lesson-group" key={group}>
                 <div className="group-name"><i style={{ background: lessons[0].groupColor }} />{group}</div>
                 {lessons.map((item) => (
-                  <button key={item.id} className={item.id === lesson.id ? "selected" : ""} onClick={() => selectLesson(projectKey, item.id)}>
+                  <button key={item.id} className={item.id === lesson?.id ? "selected" : ""} onClick={() => selectLesson(projectKey, item.id)}>
                     <span>{item.id}</span><b>{item.title.split("：")[0]}</b>
                   </button>
                 ))}
@@ -847,35 +936,151 @@ function CoursePage({
         <a href={data.repo} target="_blank" rel="noreferrer" className="repo-link">查看官方源码 <span>↗</span></a>
       </aside>
 
-      <main className="lesson-main">
-        <div className="breadcrumbs"><span>学习路径</span><i>/</i><span>{lesson.group}</span><i>/</i><b>{lesson.id}</b></div>
-        <div className="lesson-kicker"><span>{lesson.id}</span>{lesson.kicker}</div>
-        <h1>{lesson.title}</h1>
-        <blockquote style={{ borderColor: lesson.groupColor }}>{lesson.motto}</blockquote>
+      <main className={`lesson-main ${lesson ? "" : "course-overview-main"}`}>
+        {lesson ? (
+          <>
+            <div className="breadcrumbs"><span>学习路径</span><i>/</i><span>{lesson.group}</span><i>/</i><b>{lesson.id}</b></div>
+            <div className="lesson-kicker"><span>{lesson.id}</span>{lesson.kicker}</div>
+            <h1>{lesson.title}</h1>
+            <blockquote style={{ borderColor: lesson.groupColor }}>{lesson.motto}</blockquote>
 
-        <div className="lesson-tabs">
-          <button className={tab === "lecture" ? "active" : ""} onClick={() => setTab("lecture")}>讲义</button>
-          <button className={tab === "source" ? "active" : ""} onClick={() => setTab("source")}>源码地图 <span>{lesson.files.length}</span></button>
-        </div>
+            <div className="lesson-tabs">
+              <button className={tab === "lecture" ? "active" : ""} onClick={() => setTab("lecture")}>讲义</button>
+              <button className={tab === "source" ? "active" : ""} onClick={() => setTab("source")}>源码地图 <span>{lesson.files.length}</span></button>
+            </div>
 
-        {tab === "lecture" ? <Lecture lesson={lesson} project={projectKey} /> : <SourceMap lesson={lesson} project={projectKey} />}
+            {tab === "lecture" ? <Lecture lesson={lesson} project={projectKey} /> : <SourceMap lesson={lesson} project={projectKey} />}
 
-        <div className="lesson-pagination">
-          <button disabled={index === 0} onClick={() => selectLesson(projectKey, data.lessons[index - 1]?.id)}>
-            <span>← 上一课</span><b>{data.lessons[index - 1]?.title ?? "已经是第一课"}</b>
-          </button>
-          <button className="next" disabled={index === data.lessons.length - 1} onClick={() => selectLesson(projectKey, data.lessons[index + 1]?.id)}>
-            <span>下一课 →</span><b>{data.lessons[index + 1]?.title ?? "路线完成"}</b>
-          </button>
-        </div>
+            <div className="lesson-pagination">
+              <button onClick={() => index === 0 ? showOverview(projectKey) : selectLesson(projectKey, data.lessons[index - 1].id)}>
+                <span>← {index === 0 ? "路线总览" : "上一课"}</span><b>{index === 0 ? "回到全局设计" : data.lessons[index - 1].title}</b>
+              </button>
+              <button className="next" disabled={index === data.lessons.length - 1} onClick={() => selectLesson(projectKey, data.lessons[index + 1]?.id)}>
+                <span>下一课 →</span><b>{data.lessons[index + 1]?.title ?? "路线完成"}</b>
+              </button>
+            </div>
+          </>
+        ) : (
+          <CourseOverview project={projectKey} selectLesson={selectLesson} />
+        )}
       </main>
 
       <aside className="lesson-rail">
-        <div className="rail-progress"><span>路线进度</span><b>{String(index + 1).padStart(2, "0")} / {String(data.lessons.length).padStart(2, "0")}</b><i><em style={{ width: `${((index + 1) / data.lessons.length) * 100}%`, background: data.accent }} /></i></div>
-        <div className="rail-toc"><span>本页</span><a href="#start">小白导读</a><a href="#terms">先认术语</a><a href="#flow">动画运行路径</a><a href="#code-tour">逐行看代码</a><a href="#evidence">源码证据</a><a href="#architecture">架构定位</a><a href="#practice">练习与自测</a><a href="#takeaway">一句话带走</a></div>
-        <div className="rail-note"><span>给第一次读源码的你</span><p>看不懂全部代码很正常。先认输入与输出，再找中间是谁接手，最后才看实现细节。</p></div>
+        {lesson ? (
+          <>
+            <div className="rail-progress"><span>路线进度</span><b>{String(index + 1).padStart(2, "0")} / {String(data.lessons.length).padStart(2, "0")}</b><i><em style={{ width: `${((index + 1) / data.lessons.length) * 100}%`, background: data.accent }} /></i></div>
+            <div className="rail-toc"><span>本页</span><a href="#start">小白导读</a><a href="#terms">先认术语</a><a href="#flow">动画运行路径</a><a href="#code-tour">逐行看代码</a><a href="#evidence">源码证据</a><a href="#architecture">架构定位</a><a href="#practice">练习与自测</a><a href="#takeaway">一句话带走</a></div>
+            <div className="rail-note"><span>给第一次读源码的你</span><p>看不懂全部代码很正常。先认输入与输出，再找中间是谁接手，最后才看实现细节。</p></div>
+          </>
+        ) : (
+          <>
+            <div className="rail-progress"><span>路线进度</span><b>00 / {String(data.lessons.length).padStart(2, "0")}</b><i><em style={{ width: "4%", background: data.accent }} /></i></div>
+            <div className="rail-toc"><span>总览目录</span><a href="#core-idea">核心理念</a><a href="#differences">三种架构区别</a><a href="#journey">完整请求旅程</a><a href="#course-map">八课路线图</a><a href="#curiosity">关键悬念</a><a href="#fit">适合与代价</a></div>
+            <div className="rail-note"><span>总—分阅读法</span><p>先带着全局问题看八个局部，学完每一课后再回来检查：它究竟改变了整套系统的哪条边界？</p></div>
+          </>
+        )}
       </aside>
     </div>
+  );
+}
+
+function CourseOverview({
+  project,
+  selectLesson,
+}: {
+  project: ProjectKey;
+  selectLesson: (project: ProjectKey, id: string) => void;
+}) {
+  const data = projects[project];
+  const overview = courseOverviews[project];
+
+  return (
+    <article className="course-overview">
+      <header className="overview-hero">
+        <div className="overview-eyebrow"><span style={{ background: data.accent }} />{overview.eyebrow}</div>
+        <div className="overview-count">00 / {String(data.lessons.length).padStart(2, "0")}</div>
+        <h1>{overview.headline}</h1>
+        <p>{overview.thesis}</p>
+        <div className="overview-actions">
+          <button onClick={() => selectLesson(project, data.lessons[0].id)}>从 {data.lessons[0].id} 开始拆解 <span>→</span></button>
+          <a href="#differences">先看它与另外两种架构的区别</a>
+        </div>
+        <div className="opening-prompt">
+          <span>开场思考</span>
+          <p>想象一次请求正在调用工具，用户突然补充新要求，同时系统还要保存历史并允许下次继续。<b>究竟由谁决定现在该继续、暂停、改写还是结束？</b></p>
+        </div>
+      </header>
+
+      <section id="core-idea" className="overview-section">
+        <div className="overview-section-head"><span>01</span><div><small>THE BIG IDEA</small><h2>先抓住一条核心设计理念</h2></div></div>
+        <blockquote>{overview.tension}</blockquote>
+        <div className="principle-grid">
+          {overview.principles.map((principle, index) => (
+            <div key={principle.title}><span>0{index + 1}</span><h3>{principle.title}</h3><p>{principle.detail}</p></div>
+          ))}
+        </div>
+      </section>
+
+      <section id="differences" className="overview-section">
+        <div className="overview-section-head"><span>02</span><div><small>SAME PROBLEM, DIFFERENT BET</small><h2>它和另外两种架构，根本区别在哪里</h2></div></div>
+        <p className="overview-lead">三者都能完成“模型调用工具”这件事。真正不同的是：当系统变复杂时，它们选择把复杂度放在哪里。</p>
+        <div className="architecture-bets" role="table" aria-label="DSH、PI Agent 与 nanobot 核心架构区别">
+          <div className="architecture-bet-head" role="row"><span>架构</span><span>它相信什么</span><span>最擅长什么</span><span>需要付出的代价</span></div>
+          {architectureComparison.map((item) => (
+            <div className={`architecture-bet-row ${item.key === project ? "current" : ""}`} role="row" key={item.key}>
+              <strong>{item.name}{item.key === project && <small>当前路线</small>}</strong><p>{item.belief}</p><p>{item.strength}</p><p>{item.cost}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section id="journey" className="overview-section">
+        <div className="overview-section-head"><span>03</span><div><small>ONE REQUEST JOURNEY</small><h2>先把一条完整请求跑通</h2></div></div>
+        <p className="overview-lead">后面的八节课，会分别放大这条链路中的一个边界。先看全局动画，再进入局部，你就不会在文件和类型之间迷路。</p>
+        <FlowDiagram steps={overview.journey} color={data.accent} />
+      </section>
+
+      <section id="course-map" className="overview-section">
+        <div className="overview-section-head"><span>04</span><div><small>FROM WHOLE TO PARTS</small><h2>八节课怎样拼成一个完整答案</h2></div></div>
+        <div className="overview-course-map">
+          {data.lessons.map((lesson, index) => (
+            <button key={lesson.id} onClick={() => selectLesson(project, lesson.id)}>
+              <span style={{ color: lesson.groupColor }}>{lesson.id}</span>
+              <small>{lesson.group}</small>
+              <strong>{lesson.title}</strong>
+              <p>{lesson.motto}</p>
+              <i>{String(index + 1).padStart(2, "0")} / {String(data.lessons.length).padStart(2, "0")} →</i>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section id="curiosity" className="overview-section">
+        <div className="overview-section-head"><span>05</span><div><small>QUESTIONS THAT PULL YOU FORWARD</small><h2>带着这三个悬念去读源码</h2></div></div>
+        <div className="curiosity-list">
+          {overview.questions.map((item, index) => (
+            <details key={item.question}>
+              <summary><span>0{index + 1}</span><strong>{item.question}</strong><i>展开线索 ＋</i></summary>
+              <p>{item.answer}</p>
+            </details>
+          ))}
+        </div>
+      </section>
+
+      <section id="fit" className="overview-section">
+        <div className="overview-section-head"><span>06</span><div><small>WHEN TO CHOOSE IT</small><h2>什么情况下值得学习这套设计</h2></div></div>
+        <div className="fit-grid">
+          <div><small>更适合</small><h3>当你需要这些能力</h3>{overview.bestFor.map((item) => <p key={item}><span>✓</span>{item}</p>)}</div>
+          <div><small>先知道代价</small><h3>它不是免费的午餐</h3>{overview.tradeoffs.map((item) => <p key={item}><span>!</span>{item}</p>)}</div>
+        </div>
+      </section>
+
+      <footer className="overview-finale">
+        <small>READY TO UNPACK?</small>
+        <h2>现在你已经看到森林，<br />下一步再去拆第一棵树。</h2>
+        <button onClick={() => selectLesson(project, data.lessons[0].id)}>进入 {data.lessons[0].id} · {data.lessons[0].title} <span>→</span></button>
+      </footer>
+    </article>
   );
 }
 
