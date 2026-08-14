@@ -21,6 +21,15 @@ type Lesson = {
   takeaway: string;
 };
 
+type LessonDetail = {
+  architecture: string;
+  evidence: Array<{
+    file: string;
+    symbol: string;
+    note: string;
+  }>;
+};
+
 const nanobotLessons: Lesson[] = [
   {
     id: "N01",
@@ -390,6 +399,177 @@ const piLessons: Lesson[] = [
   },
 ];
 
+const lessonDetails: Record<string, LessonDetail> = {
+  N01: {
+    architecture: "Channel 只做外部协议与统一消息之间的翻译；MessageBus 是跨层边界，AgentLoop 只消费 InboundMessage，并把结果重新交回 OutboundMessage。",
+    evidence: [
+      { file: "nanobot/bus/events.py", symbol: "InboundMessage / OutboundMessage", note: "先看两个事件的数据字段，可以确认渠道名、会话与回复目标如何被统一表达。" },
+      { file: "nanobot/bus/queue.py", symbol: "MessageBus", note: "再追入站与出站队列的 publish / consume 方法，验证渠道和 Agent 并不直接互调。" },
+    ],
+  },
+  N02: {
+    architecture: "AgentLoop 拥有渠道侧的一轮对话，AgentRunner 拥有模型侧的多次迭代；二者以一次运行所需的消息、工具和限制作为交接面。",
+    evidence: [
+      { file: "nanobot/agent/loop.py", symbol: "AgentLoop", note: "这里能看到 session key、workspace、context 与 outbound delivery 被放在同一轮次编排中。" },
+      { file: "nanobot/agent/runner.py", symbol: "AgentRunner", note: "这里集中处理 provider stream、tool call、tool result 与迭代停止条件。" },
+    ],
+  },
+  N03: {
+    architecture: "项目规则、人格、记忆、技能和本轮请求先保持来源独立，再由 ContextBuilder 按顺序投影成模型消息；Runner 只接收投影结果。",
+    evidence: [
+      { file: "nanobot/agent/context.py", symbol: "ContextBuilder", note: "沿 build 路径查看各类上下文块的装配顺序，以及最终如何形成 model-visible messages。" },
+      { file: "nanobot/runtime_context.py", symbol: "RuntimeContext", note: "对照运行时元数据与持久消息，能看出哪些字段只用于本轮执行、不会混进历史。" },
+    ],
+  },
+  N04: {
+    architecture: "AgentRunner 依赖稳定的 Provider 契约；具体厂商的鉴权、请求格式、流式块和 reasoning 差异被压在实现层与 registry 里。",
+    evidence: [
+      { file: "nanobot/providers/base.py", symbol: "LLMProvider", note: "先读基类的统一输入输出，确认核心循环真正依赖的最小模型协议。" },
+      { file: "nanobot/providers/registry.py", symbol: "provider registry", note: "再看模型名、配置与 provider 实现如何匹配，验证选择策略没有散落到 AgentLoop。" },
+    ],
+  },
+  N05: {
+    architecture: "ToolRegistry 位于模型 schema 与运行时 handler 之间：向上提供可调用能力描述，向下负责查找、校验与执行。MCP 只是其中一种工具来源。",
+    evidence: [
+      { file: "nanobot/agent/tools/base.py", symbol: "Tool", note: "工具基类把 name、description、parameters 与 execute 放在同一契约中。" },
+      { file: "nanobot/agent/tools/registry.py", symbol: "ToolRegistry", note: "注册、schema 汇总与按名称执行的路径，证明 Runner 无需认识每一种具体工具。" },
+    ],
+  },
+  N06: {
+    architecture: "Session 保存可恢复的事实，Context Governance 决定本轮可见窗口，Auto Compact 在预算越界时追加摘要；存储与模型视图不是同一个对象。",
+    evidence: [
+      { file: "nanobot/session/manager.py", symbol: "SessionManager", note: "从 load、append 与 save 路径确认历史如何持久化，以及 session key 如何隔离对话。" },
+      { file: "nanobot/agent/autocompact.py", symbol: "auto compaction", note: "查看 token 阈值、保留后缀与摘要写回位置，能验证压缩发生在上下文治理边界。" },
+    ],
+  },
+  N07: {
+    architecture: "短期会话先产生候选事实，Dream / memory 层再把稳定信息写入长期 Markdown；下一轮由 ContextBuilder 重新读取，而不是直接复用旧 prompt。",
+    evidence: [
+      { file: "nanobot/agent/memory.py", symbol: "MemoryStore / consolidation", note: "关注 read、write、history 与 consolidation 路径，区分原始历史和长期记忆。" },
+      { file: "nanobot/templates/SOUL.md", symbol: "SOUL template", note: "它与 USER.md 一起说明人格和用户事实以可检查文本进入上下文，而非隐藏状态。" },
+    ],
+  },
+  N08: {
+    architecture: "Gateway 是 composition root：创建渠道、API、Cron、AgentLoop 等长期服务并统一关闭；它拥有基础设施生命周期，但不实现模型推理。",
+    evidence: [
+      { file: "nanobot/cli/gateway.py", symbol: "gateway startup", note: "从启动函数顺着 service construction 与 cleanup 读，可以看到所有长期组件的组装顺序。" },
+      { file: "nanobot/channels/manager.py", symbol: "ChannelManager", note: "渠道的发现、启动、停止与消息投递集中于此，不会侵入 AgentRunner。" },
+    ],
+  },
+  D01: {
+    architecture: "Cordis Context 既是插件树的挂载点，也是服务与事件的作用域；插件注册的 effect 会随 scope 一起回收，因此扩展天然可撤销。",
+    evidence: [
+      { file: "vendor/cordis", symbol: "Context / EffectScope", note: "从 provide、on、effect 与 dispose 的实现关系，可以验证服务、监听器和清理函数共享生命周期。" },
+      { file: "packages/core/agent", symbol: "agent plugin", note: "核心 Agent 同样通过插件安装到 ctx，说明它不是绕过 Cordis 的特权单例。" },
+    ],
+  },
+  D02: {
+    architecture: "Profile 选择产品形态，Bundle 展开一组插件，patch 按稳定 id 覆盖节点；最终运行时由一棵有序配置树生成。",
+    evidence: [
+      { file: "packages/bundle/base", symbol: "base bundle", note: "查看 bundle 导出的插件清单，可以看到基础能力本身也是可替换的组合。" },
+      { file: "packages/boot/app-boot", symbol: "profile resolution", note: "沿 profile、bundle、patch 的加载顺序，确认覆盖发生在插件启动之前。" },
+    ],
+  },
+  D03: {
+    architecture: "SessionEvent 日志是事实层；模型 messages、UI trajectory、fork 与 transcript 都是从同一日志派生的投影，因此不需要同步多份可变状态。",
+    evidence: [
+      { file: "packages/core/session", symbol: "SessionEvent / append", note: "关注事件联合类型与 append 路径，确认旧事件不被原地改写。" },
+      { file: "packages/client/ui-trajectory", symbol: "trajectory projection", note: "UI 从事件重建可见轨迹，证明渲染层没有维护另一套会话真源。" },
+    ],
+  },
+  D04: {
+    architecture: "Turn 是用户意图的工作边界，Step 是一次模型请求及其工具回填。生命周期事件把二者暴露给权限、UI、遥测与续跑插件。",
+    evidence: [
+      { file: "packages/core/agent-loop", symbol: "turn / step lifecycle", note: "按 turn/start、step/start、step/end、turn/end 的发射位置追读，可看到循环的真实停止边界。" },
+      { file: "packages/core/agent", symbol: "input inbox", note: "查看输入 claim、steering 与 follow-up 状态，理解为什么一次 step 结束不一定结束 turn。" },
+    ],
+  },
+  D05: {
+    architecture: "工具只声明能力与执行者；pre / execute / post 的 waterfall 管线拥有审批、沙箱、超时、替换结果等横切策略。",
+    evidence: [
+      { file: "packages/core/tools", symbol: "tools/pre-execute", note: "查看调用事件和 waterfall 返回值，确认前置插件可以阻止或改写一次执行。" },
+      { file: "packages/guard", symbol: "guard plugin", note: "Guard 作为管线消费者接入，而不是修改每个 tool handler，体现策略与能力分离。" },
+    ],
+  },
+  D06: {
+    architecture: "Seam 由 definition、provider、consumer 三部分构成；Scope 负责为当前 agent 选择最具体的 provider，使整组消费者同时切换执行世界。",
+    evidence: [
+      { file: "packages/core/scope", symbol: "scoped service resolution", note: "沿服务注册与查找规则查看 shadow 行为，确认局部 provider 可以覆盖全局实现。" },
+      { file: "packages/fs/fs", symbol: "filesystem provider", note: "文件工具依赖统一 fs seam；替换 provider 后，上层 editor 与读取工具无需改代码。" },
+    ],
+  },
+  D07: {
+    architecture: "Compaction、Jobs 与 Goal 各自拥有状态机，只在标准事件点把摘要、完成事实或续跑请求重新注入 Agent；主循环不理解其内部细节。",
+    evidence: [
+      { file: "packages/compaction", symbol: "compaction events", note: "查看压缩结果如何作为 session 事件写回，而不是直接篡改 AgentLoop 的 messages。" },
+      { file: "packages/jobs", symbol: "job completion injection", note: "后台任务完成后通过统一输入/事件回流，验证 jobs 不需要占住当前 turn。" },
+    ],
+  },
+  D08: {
+    architecture: "Web 与 Headless 是两套 surface bundle，下面共享 session、tools、llm 与 agent-loop；Trajectory 则把同一 SessionEvent 投影成可观察过程。",
+    evidence: [
+      { file: "packages/bundle/web-app", symbol: "web bundle", note: "检查它额外装入的服务器与 UI 插件，区分产品表面和共享内核。" },
+      { file: "packages/bundle/headless", symbol: "headless bundle", note: "对照 headless 的更小插件集合，可验证无服务器运行并不是另一套 Agent。" },
+    ],
+  },
+  P01: {
+    architecture: "pi-ai 定义模型协议，pi-agent-core 提供状态循环，pi-coding-agent 负责会话与产品策略，pi-tui 只处理终端输入输出；依赖方向由外向内单向收敛。",
+    evidence: [
+      { file: "packages/ai/src", symbol: "provider primitives", note: "从公开类型与 provider exports 可以确认最底层只描述模型、消息、工具和流事件。" },
+      { file: "packages/agent/src", symbol: "agent runtime exports", note: "这一层依赖 pi-ai，却不依赖 coding-agent 或 TUI，体现核心包的可复用边界。" },
+    ],
+  },
+  P02: {
+    architecture: "每个 provider adapter 把厂商响应转换成统一 AssistantMessageEvent 流；上层 Agent 只消费 start、delta、toolcall、done、error 等稳定词汇。",
+    evidence: [
+      { file: "packages/ai/src/types.ts", symbol: "AssistantMessageEvent", note: "先读事件联合类型，明确流式文本、思考、工具调用和结束原因的公共表示。" },
+      { file: "packages/ai/src/providers", symbol: "provider adapters", note: "任选两个厂商实现对照，能看到差异在这里被转换，而不是泄漏到 agent-loop。" },
+    ],
+  },
+  P03: {
+    architecture: "Agent 类拥有可观察状态与 prompt 入口，agent-loop.ts 执行 turn：请求模型、收集流、调工具、追加结果，并判断是否还欠一次模型调用。",
+    evidence: [
+      { file: "packages/agent/src/agent.ts", symbol: "Agent.prompt / state", note: "查看 prompt 如何进入运行循环，以及状态与事件如何暴露给上层 session。" },
+      { file: "packages/agent/src/agent-loop.ts", symbol: "agentLoop", note: "沿 assistant stream 到 tool execution 再回到下一 turn 的分支，可找到核心 while 的退出条件。" },
+    ],
+  },
+  P04: {
+    architecture: "transformContext 先处理业务级 AgentMessage，convertToLlm 再降级成 provider 消息；持久化格式、UI 消息与厂商协议因此可以独立演进。",
+    evidence: [
+      { file: "packages/agent/src/types.ts", symbol: "AgentMessage / transformContext", note: "类型层允许自定义消息存在于 Agent 历史中，并明确转换函数的扩展位置。" },
+      { file: "packages/coding-agent/src/core/messages.ts", symbol: "convertToLlm", note: "这里决定哪些 coding-agent 消息进入模型、如何转换，哪些只留给 UI 与会话。" },
+    ],
+  },
+  P05: {
+    architecture: "Agent loop 是工具调度器：先过 beforeToolCall，再依据 sequential 标记安排并发，执行后交给 afterToolCall 改写结果或提前终止。",
+    evidence: [
+      { file: "packages/agent/src/agent-loop.ts", symbol: "executeToolCalls", note: "追踪工具数组的分组与 await 方式，可以验证顺序工具如何形成并发屏障。" },
+      { file: "packages/agent/src/types.ts", symbol: "beforeToolCall / afterToolCall", note: "钩子的返回类型定义了 block、override 与 terminate，而不是靠约定字符串。" },
+    ],
+  },
+  P06: {
+    architecture: "AgentSession 位于 core Agent 与 CLI/RPC/TUI 之间，拥有会话、队列、资源和事件桥接；UI 可以操控运行，但不需要接管模型循环。",
+    evidence: [
+      { file: "packages/coding-agent/src/core/agent-session.ts", symbol: "AgentSession", note: "从 prompt、queueSteering、queueFollowUp 与 waitForIdle 看完整的产品级控制面。" },
+      { file: "packages/coding-agent/src/core/agent-session-runtime.ts", symbol: "session runtime", note: "运行时对象集中注入 model、tools、resources 与 session manager，避免构造逻辑散在各入口。" },
+    ],
+  },
+  P07: {
+    architecture: "JSONL 每行是带 id 与 parentId 的节点，当前 leaf 决定可见分支；fork 只改变后续父节点，旧分支仍可回放、总结或再次进入。",
+    evidence: [
+      { file: "packages/coding-agent/src/core/session-manager.ts", symbol: "append / branch / leaf", note: "查看节点追加与当前 leaf 更新逻辑，确认 fork 不需要复制整份会话文件。" },
+      { file: "packages/coding-agent/docs/session-format.md", symbol: "JSONL entry schema", note: "格式文档明确各类 entry 与 parentId 关系，是理解树结构最直接的证据。" },
+    ],
+  },
+  P08: {
+    architecture: "ResourceLoader 负责发现与合并资源，ExtensionAPI 把工具、事件、命令、快捷键和 UI 注册到 AgentSession；/reload 重建外围能力而保留核心。",
+    evidence: [
+      { file: "packages/coding-agent/src/core/resource-loader.ts", symbol: "DefaultResourceLoader", note: "沿 global、project 与 package 的加载优先级，确认资源覆盖规则与错误收集方式。" },
+      { file: "packages/coding-agent/src/core/extensions", symbol: "ExtensionAPI", note: "注册方法与生命周期上下文展示了扩展如何进入 session，而不修改 agent-core。" },
+    ],
+  },
+};
+
 const projects = {
   dsh: {
     title: "拆解 DeepSeek Harness",
@@ -397,6 +577,7 @@ const projects = {
     accent: "#4f8df7",
     intro: "一个把模型、工具、会话、循环和 UI 全部做成插件的 Agent Harness，如何靠 Cordis 组合成产品。",
     repo: "https://github.com/deepseek-ai/deepseek-harness",
+    branch: "master",
     language: "TypeScript · Cordis",
     lessons: dshLessons,
   },
@@ -406,6 +587,7 @@ const projects = {
     accent: "#ef684c",
     intro: "一个极简终端 Coding Harness，如何用分层包、会话树与扩展系统，把工作流选择权交还给使用者。",
     repo: "https://github.com/badlogic/pi-mono",
+    branch: "main",
     language: "TypeScript · TUI",
     lessons: piLessons,
   },
@@ -415,6 +597,7 @@ const projects = {
     accent: "#ffb11b",
     intro: "一只很轻的个人 Agent，如何从消息总线一路长成多渠道、可记忆、可持续运行的产品。",
     repo: "https://github.com/HKUDS/nanobot",
+    branch: "main",
     language: "Python · React",
     lessons: nanobotLessons,
   },
@@ -675,7 +858,7 @@ function CoursePage({
           <button className={tab === "source" ? "active" : ""} onClick={() => setTab("source")}>源码地图 <span>{lesson.files.length}</span></button>
         </div>
 
-        {tab === "lecture" ? <Lecture lesson={lesson} /> : <SourceMap lesson={lesson} project={projectKey} />}
+        {tab === "lecture" ? <Lecture lesson={lesson} project={projectKey} /> : <SourceMap lesson={lesson} project={projectKey} />}
 
         <div className="lesson-pagination">
           <button disabled={index === 0} onClick={() => selectLesson(projectKey, data.lessons[index - 1]?.id)}>
@@ -689,14 +872,22 @@ function CoursePage({
 
       <aside className="lesson-rail">
         <div className="rail-progress"><span>路线进度</span><b>{String(index + 1).padStart(2, "0")} / {String(data.lessons.length).padStart(2, "0")}</b><i><em style={{ width: `${((index + 1) / data.lessons.length) * 100}%`, background: data.accent }} /></i></div>
-        <div className="rail-toc"><span>本页</span><a href="#why">为什么需要</a><a href="#model">心智模型</a><a href="#flow">运行路径</a><a href="#takeaway">一句话带走</a></div>
+        <div className="rail-toc"><span>本页</span><a href="#why">为什么需要</a><a href="#model">心智模型</a><a href="#flow">运行路径</a><a href="#evidence">代码证据</a><a href="#architecture">架构定位</a><a href="#takeaway">一句话带走</a></div>
         <div className="rail-note"><span>源码阅读提示</span><p>先找到边界，再追实现。优先看输入、状态拥有者和失败出口。</p></div>
       </aside>
     </div>
   );
 }
 
-function Lecture({ lesson }: { lesson: Lesson }) {
+function repoSourceUrl(project: ProjectKey, file: string) {
+  const data = projects[project];
+  const targetType = /\/[^/]+\.[a-z0-9]+$/i.test(`/${file}`) ? "blob" : "tree";
+  return `${data.repo}/${targetType}/${data.branch}/${file}`;
+}
+
+function Lecture({ lesson, project }: { lesson: Lesson; project: ProjectKey }) {
+  const detail = lessonDetails[lesson.id];
+
   return (
     <article className="lecture">
       <section id="why">
@@ -711,12 +902,42 @@ function Lecture({ lesson }: { lesson: Lesson }) {
         <div className="section-number">03</div>
         <div className="section-wide"><h2>运行路径</h2><FlowDiagram steps={lesson.flow} color={lesson.groupColor} /></div>
       </section>
-      <section>
+      <section id="evidence">
         <div className="section-number">04</div>
+        <div className="section-wide">
+          <h2>代码证据</h2>
+          <p className="section-lead">不要只记结论。打开下面两个位置，沿着符号与调用方各追一层，就能在源码里验证这一课的边界。</p>
+          <div className="evidence-grid">
+            {detail.evidence.map((item, index) => (
+              <a className="evidence-card" href={repoSourceUrl(project, item.file)} target="_blank" rel="noreferrer" key={`${item.file}-${item.symbol}`}>
+                <span><small>EVIDENCE {String(index + 1).padStart(2, "0")}</small><b>↗</b></span>
+                <code>{item.file}</code>
+                <strong>{item.symbol}</strong>
+                <p>{item.note}</p>
+              </a>
+            ))}
+          </div>
+        </div>
+      </section>
+      <section id="architecture">
+        <div className="section-number">05</div>
+        <div className="section-wide">
+          <h2>放回整体架构</h2>
+          <div className="architecture-card" style={{ borderColor: lesson.groupColor }}>
+            <small>BOUNDARY / OWNERSHIP</small>
+            <p>{detail.architecture}</p>
+            <div className="architecture-axis">
+              <code>{lesson.flow[0]}</code><i>→</i><strong>{lesson.title.split("：")[0]}</strong><i>→</i><code>{lesson.flow.at(-1)}</code>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section>
+        <div className="section-number">06</div>
         <div className="section-wide"><h2>这一层解决了什么</h2><div className="point-grid">{lesson.points.map((point, index) => <div key={point}><span>0{index + 1}</span><b>{point}</b></div>)}</div></div>
       </section>
       <section id="takeaway">
-        <div className="section-number">05</div>
+        <div className="section-number">07</div>
         <div className="section-wide"><h2>一句话带走</h2><div className="takeaway">{lesson.takeaway}</div></div>
       </section>
     </article>
@@ -742,7 +963,7 @@ function SourceMap({ lesson, project }: { lesson: Lesson; project: ProjectKey })
       <div className="source-intro"><span>SOURCE WALK</span><h2>从这 {lesson.files.length} 个位置开始追</h2><p>路径来自当前官方仓库的架构文档；示意代码用于突出控制流，不是逐字复制。</p></div>
       <div className="file-stack">
         {lesson.files.map((file, index) => (
-          <a key={file} href={`${projects[project].repo}/tree/main/${file.replace(/^vendor\/cordis$/, "vendor/cordis")}`} target="_blank" rel="noreferrer">
+          <a key={file} href={repoSourceUrl(project, file)} target="_blank" rel="noreferrer">
             <span>{String(index + 1).padStart(2, "0")}</span><code>{file}</code><b>↗</b>
           </a>
         ))}

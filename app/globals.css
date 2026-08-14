@@ -153,6 +153,24 @@ a { color: inherit; text-decoration: none; }
 .section-wide { min-width: 0; }
 .mental-model { display: flex; align-items: flex-start; gap: 14px; background: color-mix(in srgb, var(--yellow) 8%, var(--paper)); border: 1px solid color-mix(in srgb, var(--yellow) 35%, var(--line)); padding: 18px; }
 .mental-model span { color: #c98100; font-family: var(--font-geist-mono), monospace; }
+.section-lead { margin-bottom: 18px !important; max-width: 720px; }
+.evidence-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.evidence-card { min-width: 0; border: 1px solid var(--line); background: var(--paper); padding: 17px; transition: border-color .2s, transform .2s; }
+.evidence-card:hover { border-color: var(--ink); transform: translateY(-2px); }
+.evidence-card > span { display: flex; align-items: center; justify-content: space-between; color: var(--faint); }
+.evidence-card small { font: 8px var(--font-geist-mono), monospace; letter-spacing: .1em; }
+.evidence-card > span b { font-weight: 450; }
+.evidence-card code { display: block; margin-top: 20px; min-height: 34px; color: var(--muted); font: 10px/1.55 var(--font-geist-mono), monospace; overflow-wrap: anywhere; }
+.evidence-card strong { display: block; margin-top: 11px; font-size: 13px; overflow-wrap: anywhere; }
+.evidence-card p { margin-top: 10px; font-size: 12px; line-height: 1.7; }
+.architecture-card { border: 1px solid; border-left-width: 3px; background: color-mix(in srgb, var(--blue) 5%, var(--paper)); padding: 20px; }
+.architecture-card > small { color: var(--faint); font: 8px var(--font-geist-mono), monospace; letter-spacing: .12em; }
+.architecture-card > p { margin-top: 13px; color: var(--ink); font-size: 13px; line-height: 1.8; }
+.architecture-axis { display: grid; grid-template-columns: minmax(0, 1fr) 24px minmax(120px, 1.1fr) 24px minmax(0, 1fr); align-items: stretch; margin-top: 20px; border-top: 1px solid var(--line); padding-top: 15px; }
+.architecture-axis code, .architecture-axis strong { display: grid; place-items: center; min-height: 54px; padding: 8px; border: 1px solid var(--line); background: var(--paper); text-align: center; overflow-wrap: anywhere; }
+.architecture-axis code { color: var(--muted); font: 9px/1.45 var(--font-geist-mono), monospace; }
+.architecture-axis strong { font-size: 11px; }
+.architecture-axis i { display: grid; place-items: center; color: var(--faint); font: normal 10px var(--font-geist-mono), monospace; }
 .flow-diagram { overflow-x: auto; display: flex; align-items: stretch; padding: 18px; background: var(--soft); border: 1px solid var(--line); }
 .flow-fragment { display: flex; align-items: center; flex: 1; min-width: 0; }
 .flow-node { position: relative; min-width: 92px; flex: 1; min-height: 84px; display: flex; flex-direction: column; justify-content: space-between; border: 1px solid var(--line); background: var(--paper); padding: 10px; }
@@ -300,6 +318,9 @@ a { color: inherit; text-decoration: none; }
   .flow-fragment { min-width: 115px; }
   .point-grid { grid-template-columns: 1fr; }
   .point-grid div { min-height: 75px; }
+  .evidence-grid { grid-template-columns: 1fr; }
+  .architecture-axis { grid-template-columns: 1fr; gap: 7px; }
+  .architecture-axis i { min-height: 18px; transform: rotate(90deg); }
   .lesson-pagination { grid-template-columns: 1fr; }
   .lesson-pagination button.next { border-left: 0; border-top: 1px solid var(--line); }
   .reading-order { grid-template-columns: 1fr; }
