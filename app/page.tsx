@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 
-type ProjectKey = "dsh" | "pi" | "nanobot";
+type ProjectKey = "dsh" | "pi" | "nanobot" | "claude" | "openclaw";
 type RouteKey = "home" | ProjectKey | "compare";
 
 type Lesson = {
@@ -411,7 +411,301 @@ const piLessons: Lesson[] = [
   },
 ];
 
+const claudeLessons: Lesson[] = [
+  {
+    id: "C01", group: "公开边界", groupColor: "#d97757", title: "SDK × CLI：公开源码到底覆盖哪一层", kicker: "Public Boundary",
+    motto: "Claude Code 核心不是完整开源项目；能可靠拆解的是官方 Agent SDK、插件、Hook 与 CLI 协议边界。",
+    why: "如果把公开 SDK 当成 Claude Code 全部内核，就会把进程桥接误读成 Agent Loop 实现。第一课先画清可验证边界：Python SDK 负责 API、类型与控制通道，实际推理由 Claude Code CLI 进程完成。",
+    model: "像遥控器与电视：遥控器的按键、电报码和状态反馈可以拆开研究，但屏幕后面的图像处理芯片仍在电视内部。",
+    flow: ["Python API", "ClaudeSDKClient", "Query", "SubprocessCLITransport", "Claude Code CLI", "Typed Messages"],
+    files: ["src/claude_agent_sdk/query.py", "src/claude_agent_sdk/client.py", "src/claude_agent_sdk/_internal/transport/subprocess_cli.py"],
+    code: `async for message in query(prompt, options):\n    handle(message)\n\n# SDK launches the official CLI\n# and exchanges newline-delimited JSON`,
+    points: ["公开范围不夸大", "SDK 与运行内核分层", "只使用官方证据"],
+    takeaway: "研究 Claude Code 时，第一件事不是猜内部 while，而是标出哪些结论能由官方公开源码直接证明。",
+  },
+  {
+    id: "C02", group: "进程协议", groupColor: "#4f8df7", title: "Subprocess Transport：SDK 如何驱动 Claude Code", kicker: "Process / NDJSON",
+    motto: "SDK 始终使用流式模式，通过子进程 stdin/stdout 交换 NDJSON，而不是把 CLI 当普通函数调用。",
+    why: "长时间 Agent 运行会不断产生文本、工具调用、Hook 和控制消息。一次性等待进程退出无法支持中断、权限回调与实时 UI，因此 transport 必须拥有进程和双向流生命周期。",
+    model: "像演播室导播间：主持人一直在直播，导播通过耳返持续下指令，同时接收每一段现场信号。",
+    flow: ["ClaudeAgentOptions", "CLI Discovery", "Process Spawn", "stdin NDJSON", "stdout NDJSON", "Message Parser"],
+    files: ["src/claude_agent_sdk/_internal/transport/subprocess_cli.py", "src/claude_agent_sdk/_internal/query.py", "src/claude_agent_sdk/_errors.py"],
+    code: `transport = SubprocessCLITransport(prompt, options)\nawait transport.connect()\nasync for raw in transport.receive_messages():\n    yield parse_message(raw)`,
+    points: ["CLI 查找与启动", "并发读写锁", "缓冲与错误边界"],
+    takeaway: "Claude Agent SDK 的核心地基是一条可靠的双向进程协议；Agent 能力在另一端，SDK 负责把它变成可编程接口。",
+  },
+  {
+    id: "C03", group: "进程协议", groupColor: "#4f8df7", title: "Message Union：把 CLI 事件变成类型世界", kicker: "Parser / Content Blocks",
+    motto: "文本、思考、工具、任务、Hook 与最终结果不是字符串日志，而是可区分、可演进的消息联合类型。",
+    why: "如果所有输出只是 console text，应用无法知道何时展示思考、何时请求权限、何时关联 tool_result，也无法兼容新增事件。parser 把原始 JSON 翻译成稳定对象。",
+    model: "像海关分流：每件包裹先看申报类型，再进入文本、工具、任务或系统事件的不同通道。",
+    flow: ["Raw JSON", "parse_message()", "Message Type", "ContentBlock", "Hook / Task Events", "Application"],
+    files: ["src/claude_agent_sdk/_internal/message_parser.py", "src/claude_agent_sdk/types.py", "tests/test_message_parser.py"],
+    code: `match data["type"]:\n    case "assistant": return AssistantMessage(...)\n    case "system": return SystemMessage(...)\n    case "result": return ResultMessage(...)`,
+    points: ["消息可判别", "内容块可组合", "未知字段向前兼容"],
+    takeaway: "真正稳定的集成面不是终端输出长什么样，而是 SDK 能否把每种生命周期事实表达成明确类型。",
+  },
+  {
+    id: "C04", group: "控制与安全", groupColor: "#a85ce5", title: "Bidirectional Control：运行中如何中断与改策略", kicker: "Control Requests",
+    motto: "持续连接的价值不只在流式输出，还在于应用能在运行中发送 interrupt、切模型、改权限与查询状态。",
+    why: "Agent 不是只读生成器。产品需要停止任务、切换 permission mode、重连 MCP、查询 context usage，SDK 因此设计了 request/response 对应的控制通道。",
+    model: "像飞机驾驶舱：仪表持续回传状态，飞行员也能随时改变航向、模式或终止某个动作。",
+    flow: ["Client Method", "Control Request", "Request ID", "CLI Handler", "Control Response", "Running Session"],
+    files: ["src/claude_agent_sdk/client.py", "src/claude_agent_sdk/_internal/query.py", "src/claude_agent_sdk/types.py"],
+    code: `await client.set_permission_mode("acceptEdits")\nawait client.set_model("claude-sonnet")\nusage = await client.get_context_usage()\nawait client.interrupt()`,
+    points: ["请求响应关联", "运行时可控", "状态查询显式化"],
+    takeaway: "流式 Agent 的完整协议必须双向：既能观察它做了什么，也能在明确边界改变它接下来怎么做。",
+  },
+  {
+    id: "C05", group: "控制与安全", groupColor: "#a85ce5", title: "Hooks × Permissions：工具执行前后谁能干预", kicker: "PreToolUse / Policy",
+    motto: "Hook 观察生命周期，Permission callback 决定一次调用能否继续；两者共同把安全策略放在工具边界。",
+    why: "文件写入、Shell 与网络访问不能只依赖模型自律。SDK 暴露 PreToolUse、PostToolUse、Stop、PreCompact 等事件，并允许回调允许、拒绝或修改工具输入。",
+    model: "像工厂质检门：原料进车间前先验权限，生产完成后再留记录；异常时可以立即叫停。",
+    flow: ["HookMatcher", "PreToolUse", "Permission Callback", "Tool Execution", "PostToolUse", "Hook Event"],
+    files: ["src/claude_agent_sdk/types.py", "examples/hooks.py", "examples/tool_permission_callback.py"],
+    code: `async def can_use_tool(name, input, context):\n    if name == "Bash" and is_risky(input):\n        return PermissionResultDeny(message="blocked")\n    return PermissionResultAllow(updated_input=input)`,
+    points: ["生命周期可观察", "调用可拒绝或改写", "策略与工具解耦"],
+    takeaway: "安全不是工具内部散落的 if；它应当成为每次能力调用必经、可记录、可组合的协议关口。",
+  },
+  {
+    id: "C06", group: "控制与安全", groupColor: "#a85ce5", title: "SDK MCP Tools：Python 函数如何进入 Agent", kicker: "@tool / MCP",
+    motto: "装饰器生成 schema，进程内 MCP Server 暴露能力，CLI 仍通过标准 MCP 调用，而不是直接 import 用户函数。",
+    why: "应用希望把数据库、业务 API 或计算函数交给 Claude 使用，同时保留参数类型和进程边界。SDK 把 Python callable 包装成 MCP tool，使外部能力走统一协议。",
+    model: "像把自家厨房接入外卖平台：菜品、参数和结果都按平台协议发布，骑手不需要进入厨房内部。",
+    flow: ["@tool", "JSON Schema", "SDK MCP Server", "Initialize", "Tool Call", "Tool Result"],
+    files: ["src/claude_agent_sdk/__init__.py", "examples/mcp_calculator.py", "src/claude_agent_sdk/types.py"],
+    code: `@tool("add", "Add two numbers", {"a": float, "b": float})\nasync def add(args):\n    return {"content": [{"type": "text", "text": str(args["a"] + args["b"])}]}`,
+    points: ["类型转 JSON Schema", "进程内 MCP", "工具协议统一"],
+    takeaway: "SDK 工具不是特殊捷径；它把本地函数正规化为 MCP 能力，因而能沿用同一套发现、调用与结果语义。",
+  },
+  {
+    id: "C07", group: "会话与扩展", groupColor: "#25ad7c", title: "SessionStore：会话怎样镜像、恢复与迁移", kicker: "Transcript / Resume",
+    motto: "CLI 产生 JSONL transcript，SDK 将增量帧镜像进可替换 SessionStore，并用 project_key、session_id 与 subpath 保持层级。",
+    why: "只依赖本机文件会限制服务器部署、横向扩展和备份。SessionStore 契约让 Postgres、Redis、S3 等后端保存同样的追加式会话，并支持恢复和子 Agent transcript。",
+    model: "像银行流水异地备份：柜台仍生成原始流水，但后台持续复制到统一账本，换机器后也能从同一编号继续。",
+    flow: ["CLI Transcript", "Mirror Batcher", "SessionStore.append", "Summary Sidecar", "Resume", "Next Query"],
+    files: ["src/claude_agent_sdk/_internal/session_store.py", "src/claude_agent_sdk/_internal/transcript_mirror_batcher.py", "src/claude_agent_sdk/_internal/session_resume.py"],
+    code: `await store.append(session_key, entries)\nentries = await store.load(session_key)\nawait import_session_to_cli(entries)\n# resume with the same session id`,
+    points: ["追加式持久化", "后端可替换", "主会话与子会话分层"],
+    takeaway: "会话可迁移的关键不是复制 prompt，而是保留原始 transcript 的顺序、身份和子路径语义。",
+  },
+  {
+    id: "C08", group: "会话与扩展", groupColor: "#25ad7c", title: "Agents × Plugins：把工作流配置送进 CLI", kicker: "Definitions / Settings",
+    motto: "AgentDefinition、setting_sources 与 Plugin config 通过 initialize 配置进入 Claude Code，SDK 负责声明而不是重写运行时。",
+    why: "产品需要不同子 Agent、系统提示、工具集合和插件目录。如果每次都手工拼 CLI 参数，配置会不可复用；结构化 options 让应用以数据声明工作流。",
+    model: "像剧组通告单：角色、台词规则、可用道具和场地来源先写成配置，开拍时统一交给现场执行。",
+    flow: ["AgentDefinition", "ClaudeAgentOptions", "setting_sources", "Plugin Config", "Initialize", "Subagent / Skill"],
+    files: ["src/claude_agent_sdk/types.py", "examples/agents.py", "examples/plugin_example.py"],
+    code: `options = ClaudeAgentOptions(\n    agents={"reviewer": AgentDefinition(...)},\n    plugins=[{"type": "local", "path": plugin_dir}],\n    setting_sources=["project"],\n)`,
+    points: ["子 Agent 数据化", "配置来源可控", "插件目录可注入"],
+    takeaway: "公开 SDK 展示的扩展哲学是“声明能力并交给 CLI 执行”，而不是在 SDK 里复制另一套 Claude Code。",
+  },
+];
+
+const openclawLessons: Lesson[] = [
+  {
+    id: "O01", group: "运行时地图", groupColor: "#ef684c", title: "五层运行时：OpenClaw 不只是一个 Agent Loop", kicker: "Core / Runtime / Product",
+    motto: "agent-core 管循环，embedded runner 管尝试，runtime 做门面，Gateway 管产品，plugin-sdk 划公开边界。",
+    why: "OpenClaw 同时服务聊天渠道、TUI、Cron、API 与插件。如果把所有职责看成一个 Agent 类，就无法判断状态、模型、会话和基础设施分别归谁。",
+    model: "像操作系统分层：内核只管基本调度，驱动适配硬件，系统服务管理长期资源，应用与插件通过公开接口进入。",
+    flow: ["Channels / Gateway", "Harness Selection", "Embedded Runner", "agent-core", "LLM / Tools", "Sessions"],
+    files: ["docs/agent-runtime-architecture.md", "packages/agent-core/src/index.ts", "src/agents/runtime/index.ts"],
+    code: `// product chooses a harness\nconst harness = selectAgentHarness(policy)\n\n// built-in runtime delegates the loop\nreturn runAgentHarnessAttempt(harness, params)`,
+    points: ["五层职责分明", "公开 SDK 边界", "产品与循环解耦"],
+    takeaway: "读 OpenClaw 先画运行时地图；否则你会在 Gateway、Harness、Runner 与 Core 之间来回迷路。",
+  },
+  {
+    id: "O02", group: "运行时地图", groupColor: "#ef684c", title: "agent-core：从模型流到工具结果的最小闭环", kicker: "Agent / Loop",
+    motto: "Agent 持有可观察状态与消息队列，agent-loop 负责模型流、工具批次、steering checkpoint 与退出条件。",
+    why: "工具可能顺序或并行执行，用户可能中途 steering，某个结果还可能污染当前 turn。将这些边界集中在 core，外围产品就不用复制复杂循环。",
+    model: "像列车调度中心：一趟列车是 turn，每个站是 tool call；调度中心决定并行、等待、插队和终点。",
+    flow: ["Agent.prompt", "runLoop", "streamAssistantResponse", "Tool Batch", "Tool Results", "Next Turn / End"],
+    files: ["packages/agent-core/src/agent.ts", "packages/agent-core/src/agent-loop.ts", "packages/agent-core/src/types.ts"],
+    code: `const stream = agentLoop(prompts, context, config)\nfor await (const event of stream) emit(event)\n// tool results may trigger another model turn`,
+    points: ["状态与执行分离", "工具批次显式", "中断和 steering 有检查点"],
+    takeaway: "OpenClaw core 的复杂度不在 while 本身，而在一次 turn 内如何安全处理流、并发工具和用户介入。",
+  },
+  {
+    id: "O03", group: "运行时地图", groupColor: "#ef684c", title: "Embedded Runner：一次尝试如何落到真实环境", kicker: "Attempt / Recovery",
+    motto: "Runner 把模型选择、系统提示、工具策略、transcript、compaction 与失败恢复组装成一次可执行 attempt。",
+    why: "可复用 core 不应知道 OpenClaw 的认证、沙箱、渠道元数据或 fallback model。embedded runner 在产品边界准备这些现实条件，再调用 core。",
+    model: "像赛车进站：底层发动机不关心天气和轮胎；车队在每次出发前完成配置、检查和故障预案。",
+    flow: ["Run Request", "Prepared Runtime", "Attempt Setup", "Agent Loop", "Compaction / Retry", "Run Result"],
+    files: ["src/agents/embedded-agent-runner/run.ts", "src/agents/embedded-agent-runner/run/attempt.ts", "src/agents/embedded-agent-runner/run-orchestrator.ts"],
+    code: `const prepared = await prepareRuntime(params)\nreturn runAttempt({ ...params, prepared })\n// overflow may compact and retry with a successor attempt`,
+    points: ["每次尝试可隔离", "恢复策略在外围", "核心不承载产品配置"],
+    takeaway: "Runner 是 OpenClaw 内核与真实产品世界的减压舱：所有易变策略在这里收口，再进入稳定循环。",
+  },
+  {
+    id: "O04", group: "控制平面", groupColor: "#4f8df7", title: "Gateway × Channel：多入口如何汇入同一执行面", kicker: "Ingress / Delivery",
+    motto: "Gateway 拥有长期服务与协议，Channel message pipeline 负责可靠接收、路由、运行和最终投递。",
+    why: "聊天平台会重复投递、断线重试、线程回复并携带不同身份。直接调用 Agent 无法处理 custody、debounce、dead letter 和 durable delivery。",
+    model: "像国际物流中心：不同快递先验收、贴统一路由单，再进入仓库处理；出库也有回执和失败重投。",
+    flow: ["Channel Receive", "Ingress Queue", "Route Resolve", "run-channel-turn", "Agent Runtime", "Durable Delivery"],
+    files: ["src/gateway/server-start.ts", "src/channels/message/receive.ts", "src/channels/turn/run-channel-turn.ts"],
+    code: `const receipt = await receiveInbound(message)\nconst route = resolveAgentRoute(receipt)\nconst result = await runChannelTurn(route)\nawait deliverWithCustody(result)`,
+    points: ["入口可靠性", "协议与推理解耦", "投递结果可追踪"],
+    takeaway: "OpenClaw 更像个人 Agent 操作系统，因为它把消息可靠性和服务生命周期当作一等控制平面。",
+  },
+  {
+    id: "O05", group: "控制平面", groupColor: "#4f8df7", title: "Routing × Session Key：消息究竟属于哪个 Agent", kicker: "Bindings / Identity",
+    motto: "Channel、账号、peer、线程与绑定规则共同解析出 agentId 和 session key，而不是把所有消息塞进 main。",
+    why: "一个 OpenClaw 实例可以托管多个隔离 Agent，并让不同 Discord、Telegram 或账号进入不同工作区。错误路由会造成记忆、权限和身份串线。",
+    model: "像医院分诊：先根据科室、病人、挂号来源和当前会诊关系确定病历号，再把请求送到正确医生。",
+    flow: ["Channel Account", "Peer / Thread", "Binding Rules", "resolveAgentRoute", "Session Key", "Agent Workspace"],
+    files: ["src/routing/resolve-route.ts", "src/routing/session-key.ts", "docs/channels/channel-routing.md"],
+    code: `const route = resolveAgentRoute({ channel, account, peer, thread })\nconst sessionKey = buildSessionKey(route)\n// agentId and workspace now stay isolated`,
+    points: ["多 Agent 隔离", "线程连续性", "绑定优先级显式"],
+    takeaway: "多 Agent 的第一道安全边界不是 prompt，而是路由与 session key 是否稳定、可解释、不会串线。",
+  },
+  {
+    id: "O06", group: "模型与工具", groupColor: "#a85ce5", title: "Prepared Model Runtime：模型目录为何要做原子快照", kicker: "Generation / Catalog",
+    motto: "Gateway 为每个 Agent 发布完整的 model runtime generation；运行时从快照 fork 可变认证与 registry，不重复半套发现。",
+    why: "模型配置、插件和认证会热更新。如果 catalog、auth 和 registry 各自独立刷新，一次请求可能读到新旧混合状态。prepared generation 用完整替换保证一致性。",
+    model: "像发布新地图版本：先在后台把道路、站点和权限全部生成完，再一次性切换；不能让用户拿到半张新图。",
+    flow: ["Config / Auth", "Runtime Build", "Model Registry", "Atomic Publish", "Run Fork", "Provider Stream"],
+    files: ["src/agents/prepared-model-runtime.ts", "src/agents/prepared-model-runtime.build.ts", "src/llm/model-registry.ts"],
+    code: `const generation = await buildPreparedModelRuntime(config)\npublishPreparedModelRuntime(agentId, generation)\nconst runRuntime = generation.forkMutableStores()`,
+    points: ["配置一致性", "发现结果复用", "每次运行可安全变更认证"],
+    takeaway: "OpenClaw 把模型选择做成已发布的运行时世代，而不是每次请求临时拼配置，这是生产级一致性设计。",
+  },
+  {
+    id: "O07", group: "模型与工具", groupColor: "#a85ce5", title: "Tools × Hooks：能力、策略与上下文预算", kicker: "Policy / Compaction",
+    motto: "工具定义属于 OpenClaw，执行批次属于 core，allow/deny、沙箱与 compaction safeguard 通过策略和 Hook 横切接入。",
+    why: "同一个 bash 或 edit 工具在私聊、群组、定时任务和插件 Harness 中可能拥有不同权限。策略必须围绕工具 surface 复用，长上下文也要在标准生命周期点压缩。",
+    model: "像机场安检：航班负责运输，安检规则按乘客与目的地变化，行李超重则在进入登机口前重新整理。",
+    flow: ["Tool Surface", "Effective Policy", "Prepare Call", "Execute / Sandbox", "Result Middleware", "Compaction Hook"],
+    files: ["src/agents/agent-tools.ts", "packages/agent-core/src/agent-loop.ts", "src/agents/agent-hooks/compaction-safeguard.ts"],
+    code: `const tools = buildAgentTools(context)\nconst allowed = applyEffectiveToolPolicy(tools, sender)\nconst result = await executeToolBatch(allowed)\nawait runCompactionSafeguard(context)`,
+    points: ["工具与策略分离", "发送者级权限", "上下文预算有 Hook"],
+    takeaway: "OpenClaw 的工具安全不是一个总开关，而是从渠道身份到 Harness 再到执行批次的分层政策。",
+  },
+  {
+    id: "O08", group: "会话与插件", groupColor: "#25ad7c", title: "Sessions × Harness Registry：运行时怎样继续进化", kicker: "Resources / Plugins",
+    motto: "Session 管持久树和资源，Harness registry 允许选择内置或插件运行时，plugin-sdk 则限制外部只能依赖公开 barrel。",
+    why: "个人 Agent 会不断增加 skills、prompts、themes、extensions，甚至更换整个执行 Harness。若插件直接 import src 内部文件，每次重构都会破坏生态。",
+    model: "像游戏主机：存档与资源包有统一格式，引擎可以切换，但第三方只能使用公开 SDK，不能焊接主板内部线路。",
+    flow: ["Resource Manifest", "ResourceLoader", "AgentSession", "Harness Registry", "Selection Policy", "Plugin SDK"],
+    files: ["src/agents/sessions/resource-loader.ts", "src/agents/harness/registry.ts", "src/agents/harness/selection.ts"],
+    code: `registerAgentHarness(pluginHarness)\nconst selected = selectAgentHarness(policy)\nconst resources = await loader.reload()\nreturn selected.run({ session, resources })`,
+    points: ["资源可发现", "Harness 可替换", "插件依赖方向受控"],
+    takeaway: "OpenClaw 的终局不是无限扩大内置 Runner，而是让会话资源和替代 Harness 都通过稳定公开边界进入。",
+  },
+];
+
 const lessonDetails: Record<string, LessonDetail> = {
+  C01: {
+    architecture: "官方 Python SDK 是 Claude Code 的可编程控制层：query / client 向上提供异步 API，SubprocessCLITransport 向下启动官方 CLI。CLI 内部 Agent Loop 不在该 SDK 仓库中。",
+    evidence: [
+      { file: "src/claude_agent_sdk/query.py", symbol: "query()", note: "一次性查询 API 创建内部 Query 与 transport，并把解析后的 Message 异步迭代给调用者。" },
+      { file: "src/claude_agent_sdk/_internal/transport/subprocess_cli.py", symbol: "SubprocessCLITransport", note: "类注释和 _find_cli / connect 路径直接证明 SDK 通过 Claude Code CLI 子进程完成实际运行。" },
+    ],
+  },
+  C02: {
+    architecture: "SubprocessCLITransport 拥有 CLI 进程、stdin/stdout/stderr 流、写锁、缓冲上限与退出错误；上层 Query 只依赖 Transport 契约，不处理操作系统细节。",
+    evidence: [
+      { file: "src/claude_agent_sdk/_internal/transport/subprocess_cli.py", symbol: "connect / write / receive_messages", note: "查看进程创建、NDJSON 逐行读取和写锁，能确认双向流的生命周期由 transport 独占。" },
+      { file: "src/claude_agent_sdk/_errors.py", symbol: "CLIConnectionError / ProcessError", note: "CLI 未找到、进程退出和 JSON 解码错误被区分成稳定 SDK 异常，而不是泄漏原始 stderr。" },
+    ],
+  },
+  C03: {
+    architecture: "message_parser 是不可信原始 JSON 与 SDK 类型世界之间的防腐层；types.py 定义 Message / ContentBlock 联合，上层应用不依赖 CLI 输出字符串。",
+    evidence: [
+      { file: "src/claude_agent_sdk/_internal/message_parser.py", symbol: "parse_message", note: "按 user、assistant、system、result 与 stream_event 分支构造类型，并对缺失字段抛出 MessageParseError。" },
+      { file: "src/claude_agent_sdk/types.py", symbol: "AssistantMessage / ToolUseBlock / ResultMessage", note: "消息对象保留 model、usage、session_id、parent_tool_use_id 等关联信息，足以支持 UI 与状态机。" },
+    ],
+  },
+  C04: {
+    architecture: "ClaudeSDKClient 通过内部 Query 维持持续会话；interrupt、set_model、set_permission_mode 与 MCP 状态查询都编码成带 request_id 的控制请求。",
+    evidence: [
+      { file: "src/claude_agent_sdk/client.py", symbol: "interrupt / set_permission_mode / set_model", note: "这些公开方法不重启进程，而是调用 Query 控制接口修改当前连接中的运行时状态。" },
+      { file: "src/claude_agent_sdk/_internal/query.py", symbol: "control request routing", note: "查看 pending response 与 request id 管理，可以验证多个控制请求如何与异步响应正确配对。" },
+    ],
+  },
+  C05: {
+    architecture: "HookMatcher 选择生命周期回调，can_use_tool 返回 allow / deny 结果；PreToolUse 可修改输入，PostToolUse 与 Stop 负责观察和收口。",
+    evidence: [
+      { file: "src/claude_agent_sdk/types.py", symbol: "HookMatcher / PermissionResultAllow / PermissionResultDeny", note: "类型明确列出 matcher、回调、updated_input 与 deny message，策略返回值不是约定字符串。" },
+      { file: "examples/tool_permission_callback.py", symbol: "can_use_tool", note: "官方示例展示如何按工具名和输入做允许、拒绝或改写，是最小可运行的安全边界证据。" },
+    ],
+  },
+  C06: {
+    architecture: "@tool 将 Python 类型转为 JSON Schema，create_sdk_mcp_server 建立进程内 MCP Server；CLI 只看到标准 server config 与 tool result。",
+    evidence: [
+      { file: "src/claude_agent_sdk/__init__.py", symbol: "tool / create_sdk_mcp_server", note: "装饰器与 server factory 展示 callable、schema、handler 如何组合成 SdkMcpTool 和 MCP 配置。" },
+      { file: "examples/mcp_calculator.py", symbol: "calculator MCP server", note: "官方计算器示例把多个 Python 函数发布给 Claude，并通过 options.mcp_servers 注入。" },
+    ],
+  },
+  C07: {
+    architecture: "TranscriptMirrorBatcher 从 CLI JSONL 增量收集帧，SessionStore 以 project_key / session_id / subpath 保存；resume 时再导回 CLI 可识别的会话。",
+    evidence: [
+      { file: "src/claude_agent_sdk/_internal/session_store.py", symbol: "SessionStore / InMemorySessionStore", note: "append、load、list、delete 与 list_subkeys 定义了可替换后端必须维持的追加式语义。" },
+      { file: "src/claude_agent_sdk/_internal/transcript_mirror_batcher.py", symbol: "TranscriptMirrorBatcher", note: "批处理器解析 transcript 路径、聚合帧并写入 store，避免每个文件事件都触发一次远端写入。" },
+    ],
+  },
+  C08: {
+    architecture: "AgentDefinition、SdkPluginConfig 与 setting_sources 都属于 ClaudeAgentOptions；SDK 在 initialize 阶段把声明送入 CLI，由 CLI 按自己的插件与子 Agent 机制执行。",
+    evidence: [
+      { file: "src/claude_agent_sdk/types.py", symbol: "AgentDefinition / SdkPluginConfig / ClaudeAgentOptions", note: "定义展示 prompt、tools、model、skills、plugin path 与配置来源如何被结构化表达。" },
+      { file: "examples/agents.py", symbol: "agents option", note: "官方示例创建多个不同职责的 AgentDefinition，并通过 options.agents 一次性交给运行时。" },
+    ],
+  },
+  O01: {
+    architecture: "OpenClaw 将产品控制平面、Harness 选择、embedded runner、可复用 agent-core、LLM transport 与 Session resources 分层；插件只能经 plugin-sdk barrel 进入。",
+    evidence: [
+      { file: "docs/agent-runtime-architecture.md", symbol: "Runtime Layout / Boundaries", note: "官方架构文档逐项列出 src/agents、packages/agent-core、src/llm 与 plugin-sdk 的所有权。" },
+      { file: "src/agents/runtime/index.ts", symbol: "runtime facade", note: "门面将 agent-core 与 OpenClaw LLM runtime 绑定并重新导出，避免业务代码跨层拼接内部模块。" },
+    ],
+  },
+  O02: {
+    architecture: "Agent 类拥有状态、prompt 与 pending queue；agent-loop.ts 拥有模型流、工具批次、steering checkpoint、turn taint 与结束判定。",
+    evidence: [
+      { file: "packages/agent-core/src/agent.ts", symbol: "Agent / PendingMessageQueue", note: "从 prompt、steer 与 state 更新路径可以看到可观察对象和真正执行循环被拆成两层。" },
+      { file: "packages/agent-core/src/agent-loop.ts", symbol: "runLoop / executeToolCalls", note: "核心文件显式区分顺序与并行工具、结果最终化、steering 和继续下一模型 turn 的条件。" },
+    ],
+  },
+  O03: {
+    architecture: "run-orchestrator 准备并协调多次 attempt；run/attempt.ts 把 prepared runtime、工具、系统提示、transcript 与 core loop 连接，并在 overflow 等失败后恢复。",
+    evidence: [
+      { file: "src/agents/embedded-agent-runner/run.ts", symbol: "runEmbeddedAgent", note: "公开入口负责接收产品级参数并交给 orchestrator，不把所有准备逻辑塞进一个函数。" },
+      { file: "src/agents/embedded-agent-runner/run/attempt.ts", symbol: "runEmbeddedAttempt", note: "一次 attempt 的 session、model、tools、hook 与 stream 装配在这里形成清楚的失败边界。" },
+    ],
+  },
+  O04: {
+    architecture: "Gateway 启动长期服务；channel receive 将外部消息放入可靠 ingress，run-channel-turn 处理一次渠道轮次，durable delivery 再拥有出站交付。",
+    evidence: [
+      { file: "src/gateway/server-start.ts", symbol: "startGatewayServer", note: "Gateway 入口创建服务器与运行时服务，说明它是控制平面而不是模型循环实现。" },
+      { file: "src/channels/turn/run-channel-turn.ts", symbol: "runChannelTurn", note: "一轮渠道消息的 prepared lifecycle、Agent 运行和最终投递在这里串联并分别保留结果。" },
+    ],
+  },
+  O05: {
+    architecture: "resolve-route 根据 channel、account、peer、thread 与 binding scope 解析 agentId；session-key 将结果稳定编码成会话身份和连续性边界。",
+    evidence: [
+      { file: "src/routing/resolve-route.ts", symbol: "resolveAgentRoute", note: "从绑定匹配优先级可以确认指定 peer、账号或渠道如何覆盖默认 Agent。" },
+      { file: "src/routing/session-key.ts", symbol: "session key builders", note: "会话键把 Agent、渠道与对话范围编码在一起，防止不同用户或线程共享历史。" },
+    ],
+  },
+  O06: {
+    architecture: "PreparedModelRuntimeGeneration 原子持有 auth template、model registry 与 catalog；Gateway 发布完整世代，Agent run 从它 fork 可变 store。",
+    evidence: [
+      { file: "src/agents/prepared-model-runtime.ts", symbol: "prepared model runtime publication", note: "读取 build、publish 与 lookup 路径，能看到未完成 generation 不会成为读者可见状态。" },
+      { file: "src/agents/prepared-model-runtime.build.ts", symbol: "buildPreparedModelRuntime", note: "认证发现、registry 和投影 catalog 在同一次构建中完成，形成一致快照。" },
+    ],
+  },
+  O07: {
+    architecture: "agent-tools.ts 定义产品工具 surface；agent-core 执行工具批次；effective policy、result middleware 与 compaction hook 分别控制准入、结果和预算。",
+    evidence: [
+      { file: "src/agents/agent-tools.ts", symbol: "buildAgentTools", note: "工具构建按 Agent、渠道与沙箱上下文选择能力，并保留 policy 注入位置。" },
+      { file: "src/agents/agent-hooks/compaction-safeguard.ts", symbol: "compaction safeguard", note: "压缩保护在标准 Hook 位置检查上下文和 session，而不是侵入每一种 provider 或工具。" },
+    ],
+  },
+  O08: {
+    architecture: "ResourceLoader 发现 prompts、skills、themes 与 extensions；Harness registry 记录内置和插件 runtime；selection policy 决定一次请求实际交给谁执行。",
+    evidence: [
+      { file: "src/agents/sessions/resource-loader.ts", symbol: "DefaultResourceLoader", note: "manifest 与约定目录的发现、覆盖和重载集中在资源层，不散落在 Agent Loop。" },
+      { file: "src/agents/harness/selection.ts", symbol: "selectAgentHarness / runAgentHarnessAttempt", note: "选择逻辑结合 provider route、配置与插件支持度，再通过统一接口运行 attempt。" },
+    ],
+  },
   N01: {
     architecture: "Channel 只做外部协议与统一消息之间的翻译；MessageBus 是跨层边界，AgentLoop 只消费 InboundMessage，并把结果重新交回 OutboundMessage。",
     evidence: [
@@ -613,6 +907,26 @@ const projects = {
     language: "Python · React",
     lessons: nanobotLessons,
   },
+  claude: {
+    title: "拆解 Claude Code",
+    label: "Claude Code",
+    accent: "#d97757",
+    intro: "基于 Anthropic 官方公开的 Agent SDK、插件与 Hook 源码，拆解 Claude Code 可验证的控制协议与运行边界。",
+    repo: "https://github.com/anthropics/claude-agent-sdk-python",
+    branch: "main",
+    language: "Python · SDK / CLI",
+    lessons: claudeLessons,
+  },
+  openclaw: {
+    title: "拆解 OpenClaw",
+    label: "OpenClaw",
+    accent: "#17a589",
+    intro: "一个跨渠道个人 AI 助手，如何用 Gateway、Harness、Runner、agent-core 与插件 SDK 组成生产级运行时。",
+    repo: "https://github.com/openclaw/openclaw",
+    branch: "main",
+    language: "TypeScript · Gateway",
+    lessons: openclawLessons,
+  },
 } as const;
 
 const courseOverviews: Record<ProjectKey, CourseOverviewData> = {
@@ -673,24 +987,64 @@ const courseOverviews: Record<ProjectKey, CourseOverviewData> = {
     bestFor: ["第一次系统阅读个人 Agent 源码", "希望快速追通消息到回复的调用链", "需要多渠道、记忆与定时任务的轻量产品"],
     tradeoffs: ["组合自由度不如 DSH 的插件树彻底", "工作流可塑性不如 PI 的扩展面开放", "规模继续增长时需要防止 Gateway 与配置层变重"],
   },
+  claude: {
+    eyebrow: "ROUTE D · PUBLIC SDK BOUNDARY",
+    headline: "Claude Code 没有完整开源，我们仍然能从官方源码看懂什么？",
+    thesis: "官方 Agent SDK 没有复刻 Claude Code 的内部循环，而是把双向控制、类型化消息、权限、Hook、会话与插件暴露成稳定接口；它展示的是一条可验证的运行边界。",
+    tension: "Anthropic 的 claude-code 仓库公开插件、示例与配置，但不包含完整核心实现；这条路线因此只分析官方公开 SDK 与接口，不使用反编译或泄漏材料。",
+    principles: [
+      { title: "CLI 是明确的进程边界", detail: "Python 应用通过 SubprocessCLITransport 启动官方 CLI，以 JSON 流通信；SDK 负责控制，核心运行时仍留在 CLI 侧。" },
+      { title: "生命周期先变成类型", detail: "Assistant、User、System、Result 与 StreamEvent 组成消息联合类型，让调用者能按阶段处理运行过程，而不是解析模糊文本。" },
+      { title: "安全控制是一等协议", detail: "权限回调、Hook、MCP 工具与控制请求都沿同一双向通道工作，审批和拦截不必偷偷塞进 Prompt。" },
+    ],
+    journey: ["Python App", "ClaudeSDKClient", "Control / Query", "Subprocess Transport", "Claude Code CLI", "Typed Events"],
+    questions: [
+      { question: "SDK 为什么同时提供 query() 与 ClaudeSDKClient？", answer: "query() 适合一次性单向请求；ClaudeSDKClient 维护双向控制通道，能在运行中发送输入、处理中断、权限和 Hook。" },
+      { question: "自定义 MCP 工具在哪里真正执行？", answer: "@tool 与 create_sdk_mcp_server 在 Python 进程内建立 SDK MCP server；CLI 通过控制协议发来调用，SDK 再执行处理函数并回传结果。" },
+      { question: "课程为什么不讲 Claude Code 内部 Agent Loop 的逐行源码？", answer: "因为完整核心没有在官方仓库公开。课程只把官方能验证的 SDK、插件、Hook 与协议边界讲透。" },
+    ],
+    bestFor: ["需要可靠集成 Claude Code 能力", "关心权限、Hook 与双向控制", "想学习 SDK 如何包住一个独立 Agent 运行时"],
+    tradeoffs: ["无法逐行审计 Claude Code 内部核心循环", "运行仍依赖官方 CLI", "理解重点是控制面与公开接口，而非完整实现复刻"],
+  },
+  openclaw: {
+    eyebrow: "ROUTE E · PERSONAL AGENT OS",
+    headline: "为什么 OpenClaw 更像 Agent 操作系统，而不是聊天机器人？",
+    thesis: "OpenClaw 把渠道接入、Gateway 控制面、路由、Harness 选择、Runner 尝试循环、agent-core 与会话持久化拆成不同层，让一个 Agent 能跨入口、跨模型、跨插件长期运行。",
+    tension: "一个聊天循环很容易写；难的是同时管理多个渠道、多个 Agent、配置刷新、工具策略、会话恢复与插件兼容，而不让所有职责挤进同一个进程入口。",
+    principles: [
+      { title: "控制平面与执行循环分开", detail: "Gateway 接收连接和命令，routing 决定会话归属，embedded runner 才负责一次真正的模型—工具尝试。" },
+      { title: "准备态运行时按代际发布", detail: "模型、工具和配置先构建为 prepared runtime；新请求切到新 generation，正在运行的任务不被热更新撕裂。" },
+      { title: "Harness 与插件都有稳定边界", detail: "harness registry 选择运行方式，plugin-sdk 暴露受支持的契约，扩展不需要穿透整个 src 内部结构。" },
+    ],
+    journey: ["Channel", "Gateway / Routing", "Harness", "Embedded Runner", "agent-core", "Delivery / Session"],
+    questions: [
+      { question: "为什么消息不能从 Channel 直接进入 Agent Loop？", answer: "Gateway 和 routing 先处理连接、身份、Agent 选择与 session key，执行层才能面对一个稳定、已归属的请求。" },
+      { question: "配置或模型刷新时，正在跑的任务怎么办？", answer: "prepared runtime 用 generation 隔离新旧运行时；旧任务持有自己的 lease，完成后再释放旧资源。" },
+      { question: "OpenClaw 为什么同时需要 agent-core、runner 和 harness？", answer: "agent-core 放可复用原语，runner 管内建尝试循环，harness 决定采用哪套运行实现；三个层次解决不同变化速度。" },
+    ],
+    bestFor: ["研究跨渠道个人 Agent 产品", "学习生产级控制面与运行时隔离", "需要多 Agent 路由、会话和插件生态"],
+    tradeoffs: ["系统规模与阅读面最广", "Gateway、Harness、Runner 的层级需要先建立全局地图", "部署与配置复杂度高于单进程轻量 Agent"],
+  },
 };
 
 const architectureComparison = [
   { key: "dsh" as const, name: "DSH", belief: "边界必须可替换", strength: "插件组合与能力换骨", cost: "抽象密度最高" },
   { key: "pi" as const, name: "PI Agent", belief: "核心应该尽可能小", strength: "工作流可塑与会话分支", cost: "产品策略需要自己选择" },
   { key: "nanobot" as const, name: "nanobot", belief: "调用链应该直接可读", strength: "清晰分层与快速上手", cost: "组合自由度相对克制" },
+  { key: "claude" as const, name: "Claude Code", belief: "运行能力通过稳定控制协议暴露", strength: "成熟工具体验与安全边界", cost: "核心实现并未完整开源" },
+  { key: "openclaw" as const, name: "OpenClaw", belief: "个人 Agent 需要完整控制平面", strength: "跨渠道、运行时与插件生态", cost: "系统与运维复杂度最高" },
 ];
 
 function routeFromHash(): RouteKey {
   if (typeof window === "undefined") return "home";
   const route = window.location.hash.replace("#/", "").split("/")[0];
-  if (route === "dsh" || route === "pi" || route === "nanobot" || route === "compare") return route;
+  if (route === "dsh" || route === "pi" || route === "nanobot" || route === "claude" || route === "openclaw" || route === "compare") return route;
   return "home";
 }
 
 export default function Home() {
   const [route, setRoute] = useState<RouteKey>("home");
-  const [lessonId, setLessonId] = useState<Record<ProjectKey, string | null>>({ dsh: null, pi: null, nanobot: null });
+  const [lessonId, setLessonId] = useState<Record<ProjectKey, string | null>>({ dsh: null, pi: null, nanobot: null, claude: null, openclaw: null });
   const [tab, setTab] = useState<"lecture" | "source">("lecture");
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -699,7 +1053,7 @@ export default function Home() {
       const next = routeFromHash();
       setRoute(next);
       const bits = window.location.hash.replace("#/", "").split("/");
-      if (next === "dsh" || next === "pi" || next === "nanobot") {
+      if (next === "dsh" || next === "pi" || next === "nanobot" || next === "claude" || next === "openclaw") {
         const valid = bits[1] && projects[next].lessons.some((lesson) => lesson.id === bits[1]);
         setLessonId((current) => ({ ...current, [next]: valid ? bits[1] : null }));
       }
@@ -730,7 +1084,7 @@ export default function Home() {
     <div className="site-shell">
       <Header route={route} navigate={navigate} menuOpen={menuOpen} setMenuOpen={setMenuOpen} />
       {route === "home" && <Landing navigate={navigate} />}
-      {(route === "dsh" || route === "pi" || route === "nanobot") && (
+      {(route === "dsh" || route === "pi" || route === "nanobot" || route === "claude" || route === "openclaw") && (
         <CoursePage
           projectKey={route}
           selectedId={lessonId[route]}
@@ -788,6 +1142,8 @@ function Header({
           ["dsh", "拆 DSH"],
           ["pi", "拆 PI"],
           ["nanobot", "拆 nanobot"],
+          ["claude", "拆 Claude"],
+          ["openclaw", "拆 OpenClaw"],
           ["compare", "横向对照"],
         ] as [RouteKey, string][]).map(([key, label]) => (
           <button key={key} className={route === key ? "active" : ""} onClick={() => navigate(key)}>{label}</button>
@@ -806,14 +1162,14 @@ function Landing({ navigate }: { navigate: (route: RouteKey) => void }) {
         <div className="hero-copy">
           <div className="eyebrow"><span /> SOURCE-GUIDED · 逐层拆解</div>
           <h1>别只会用 Agent，<br /><em>看懂它为什么能工作。</em></h1>
-          <p>三条源码路线，一套统一问题：消息怎么进来、上下文怎么组装、模型如何调用工具、状态如何留下、系统如何长成产品。</p>
+          <p>五条源码路线，一套统一问题：消息怎么进来、上下文怎么组装、模型如何调用工具、状态如何留下、系统如何长成产品。</p>
           <div className="hero-actions">
             <button className="primary-action" onClick={() => navigate("dsh")}>从 DSH 开始 <span>→</span></button>
-            <button className="text-action" onClick={() => navigate("compare")}>先看三者差异</button>
+            <button className="text-action" onClick={() => navigate("compare")}>先看五种架构差异</button>
           </div>
           <div className="hero-stats">
-            <div><strong>24</strong><span>节架构课</span></div>
-            <div><strong>3</strong><span>源码路线</span></div>
+            <div><strong>40</strong><span>节架构课</span></div>
+            <div><strong>5</strong><span>源码路线</span></div>
             <div><strong>1</strong><span>统一心智模型</span></div>
           </div>
         </div>
@@ -823,12 +1179,14 @@ function Landing({ navigate }: { navigate: (route: RouteKey) => void }) {
       <section className="route-section">
         <div className="section-heading">
           <span>选择一条路线</span>
-          <p>三个项目都从 Agent Loop 出发，却给出了插件组合、极简扩展与产品分层三种答案。</p>
+          <p>五个项目从同一个 Agent 问题出发，给出插件组合、极简扩展、应用分层、控制协议与个人 Agent OS 五种答案。</p>
         </div>
         <div className="route-cards">
           <RouteCard project="dsh" navigate={navigate} />
           <RouteCard project="pi" navigate={navigate} />
           <RouteCard project="nanobot" navigate={navigate} />
+          <RouteCard project="claude" navigate={navigate} />
+          <RouteCard project="openclaw" navigate={navigate} />
         </div>
       </section>
 
@@ -868,8 +1226,8 @@ function SystemSketch() {
 
 function RouteCard({ project, navigate }: { project: ProjectKey; navigate: (route: RouteKey) => void }) {
   const data = projects[project];
-  const routeIndex: Record<ProjectKey, string> = { dsh: "ROUTE A", pi: "ROUTE B", nanobot: "ROUTE C" };
-  const routeIcon: Record<ProjectKey, string> = { dsh: "dsh / core", pi: "pi / agent", nanobot: "nano / bot" };
+  const routeIndex: Record<ProjectKey, string> = { dsh: "ROUTE A", pi: "ROUTE B", nanobot: "ROUTE C", claude: "ROUTE D", openclaw: "ROUTE E" };
+  const routeIcon: Record<ProjectKey, string> = { dsh: "dsh / core", pi: "pi / agent", nanobot: "nano / bot", claude: "claude / sdk", openclaw: "open / claw" };
   return (
     <button className={`route-card ${project}`} onClick={() => navigate(project)}>
       <div className="route-card-top">
@@ -975,7 +1333,7 @@ function CoursePage({
         ) : (
           <>
             <div className="rail-progress"><span>路线进度</span><b>00 / {String(data.lessons.length).padStart(2, "0")}</b><i><em style={{ width: "4%", background: data.accent }} /></i></div>
-            <div className="rail-toc"><span>总览目录</span><a href="#core-idea">核心理念</a><a href="#differences">三种架构区别</a><a href="#journey">完整请求旅程</a><a href="#course-map">八课路线图</a><a href="#curiosity">关键悬念</a><a href="#fit">适合与代价</a></div>
+            <div className="rail-toc"><span>总览目录</span><a href="#core-idea">核心理念</a><a href="#differences">五种架构区别</a><a href="#journey">完整请求旅程</a><a href="#course-map">八课路线图</a><a href="#curiosity">关键悬念</a><a href="#fit">适合与代价</a></div>
             <div className="rail-note"><span>总—分阅读法</span><p>先带着全局问题看八个局部，学完每一课后再回来检查：它究竟改变了整套系统的哪条边界？</p></div>
           </>
         )}
@@ -1317,33 +1675,45 @@ function SourceMap({ lesson, project }: { lesson: Lesson; project: ProjectKey })
 }
 
 function Compare({ navigate }: { navigate: (route: RouteKey) => void }) {
+  const headers: Array<{ key: ProjectKey; name: string; subtitle: string }> = [
+    { key: "dsh", name: "DSH", subtitle: "Composable Harness" },
+    { key: "pi", name: "PI Agent", subtitle: "Minimal & Extensible" },
+    { key: "nanobot", name: "nanobot", subtitle: "Readable Application" },
+    { key: "claude", name: "Claude Code", subtitle: "Public SDK Boundary" },
+    { key: "openclaw", name: "OpenClaw", subtitle: "Personal Agent OS" },
+  ];
   const rows = [
-    ["核心组织方式", "Cordis 插件树 + ctx", "四层包 + 极简核心", "分层 Python 模块 + 注册表"],
-    ["消息入口", "Agent inbox + typed events", "AgentSession + 双消息队列", "异步 MessageBus"],
-    ["Agent 执行", "agent-loop 插件 + turn/step", "Agent core + 事件流", "AgentLoop / AgentRunner 分工"],
-    ["状态真源", "append-only SessionEvent", "JSONL tree + active leaf", "Session 历史 +长期 Memory"],
-    ["扩展工具", "ctx.tools + waterfall 管线", "ExtensionAPI + tool hooks", "ToolRegistry / plugin entry points"],
-    ["模型替换", "ctx.llm seam provider", "pi-ai provider stream", "Provider 接口与 registry"],
-    ["产品组装", "Profile / Bundle / patch", "ResourceLoader + CLI / SDK / RPC", "Gateway 作为 composition root"],
-    ["最强教学价值", "高度可组合、边界极致显式", "最小内核、工作流完全可塑", "清晰、直接、容易追调用链"],
+    ["核心组织方式", "Cordis 插件树 + ctx", "四层包 + 极简核心", "分层 Python 模块 + 注册表", "官方 CLI + Python 控制 SDK", "Gateway + Harness + Runner + Core"],
+    ["消息入口", "Agent inbox + typed events", "AgentSession + 双消息队列", "异步 MessageBus", "query() 或双向 ClaudeSDKClient", "Channel → Gateway → Routing"],
+    ["Agent 执行", "agent-loop 插件 + turn/step", "Agent core + 事件流", "AgentLoop / AgentRunner 分工", "核心在官方 CLI；SDK 消费类型化事件", "Embedded Runner attempt loop"],
+    ["状态真源", "append-only SessionEvent", "JSONL tree + active leaf", "Session 历史 + 长期 Memory", "session_id + transcript mirror", "Sessions 持久化 + session key"],
+    ["扩展工具", "ctx.tools + waterfall 管线", "ExtensionAPI + tool hooks", "ToolRegistry / plugin entry points", "SDK MCP server + Hook / Permission", "agent-tools policy + plugin SDK"],
+    ["模型替换", "ctx.llm seam provider", "pi-ai provider stream", "Provider 接口与 registry", "通过官方 CLI 选模型与配置", "Prepared model runtime generation"],
+    ["产品组装", "Profile / Bundle / patch", "ResourceLoader + CLI / SDK / RPC", "Gateway 作为 composition root", "SDK options + plugins + agents", "Gateway 控制面 + Harness registry"],
+    ["最强教学价值", "高度可组合、边界极致显式", "最小内核、工作流完全可塑", "清晰、直接、容易追调用链", "理解独立运行时的控制协议与安全边界", "理解生产级个人 Agent 的完整控制平面"],
   ];
   return (
     <main className="compare-page">
       <div className="compare-hero">
         <div className="eyebrow"><span /> SIDE BY SIDE · 横向对照</div>
-        <h1>同一个 Agent 问题，<br /><em>三种系统答案。</em></h1>
-        <p>DSH 选择彻底的插件组合；PI 选择极简内核与用户扩展；nanobot 选择清晰的应用分层。它们不是强弱关系，而是不同的复杂度预算。</p>
+        <h1>同一个 Agent 问题，<br /><em>五种系统答案。</em></h1>
+        <p>从 DSH 的插件树、PI 的极简核心、nanobot 的清晰分层，到 Claude Code 的公开控制协议与 OpenClaw 的完整控制平面：它们不是强弱排序，而是五种复杂度预算。</p>
       </div>
       <div className="comparison-table">
-        <div className="comparison-head"><span>架构问题</span><button onClick={() => navigate("dsh")}><b>DSH</b><small>Composable Harness</small></button><button onClick={() => navigate("pi")}><b>PI Agent</b><small>Minimal &amp; Extensible</small></button><button onClick={() => navigate("nanobot")}><b>nanobot</b><small>Readable Application</small></button></div>
-        {rows.map((row, index) => <div className="comparison-row" key={row[0]}><span><small>{String(index + 1).padStart(2, "0")}</small>{row[0]}</span><p>{row[1]}</p><p>{row[2]}</p><p>{row[3]}</p></div>)}
+        <div className="comparison-head">
+          <span>架构问题</span>
+          {headers.map((header) => <button key={header.key} onClick={() => navigate(header.key)}><b>{header.name}</b><small>{header.subtitle}</small></button>)}
+        </div>
+        {rows.map((row, index) => <div className="comparison-row" key={row[0]}><span><small>{String(index + 1).padStart(2, "0")}</small>{row[0]}</span>{row.slice(1).map((cell, cellIndex) => <p key={`${row[0]}-${headers[cellIndex].key}`}>{cell}</p>)}</div>)}
       </div>
       <section className="choice-section">
         <div><span>如果你更关心</span><h2>如何构建可换骨架的 Harness</h2><p>先读 DSH。它把插件生命周期、事件溯源、能力 seam 与产品组合都变成一等架构概念。</p><button onClick={() => navigate("dsh")}>进入 DSH 路线 →</button></div>
         <div><span>如果你更关心</span><h2>如何把工作流选择权交给用户</h2><p>先读 PI。它用极小 Agent core、会话树和统一扩展 API，展示“少内置、多可塑”的 Coding Harness。</p><button onClick={() => navigate("pi")}>进入 PI Agent 路线 →</button></div>
         <div><span>如果你更关心</span><h2>从一个能跑的个人 Agent 学起</h2><p>先读 nanobot。调用链短，Python 模块边界直接，消息、上下文、工具和记忆都能很快找到落点。</p><button onClick={() => navigate("nanobot")}>进入 nanobot 路线 →</button></div>
+        <div><span>如果你更关心</span><h2>怎样安全控制一个独立 Agent 运行时</h2><p>读 Claude Code 公开部分。沿官方 SDK 看子进程协议、类型化事件、权限、Hook、MCP 工具与会话恢复。</p><button onClick={() => navigate("claude")}>进入 Claude Code 路线 →</button></div>
+        <div><span>如果你更关心</span><h2>个人 Agent 如何长成生产级系统</h2><p>读 OpenClaw。Gateway、路由、Harness、Runner、prepared runtime 和插件契约会拼成一张完整系统地图。</p><button onClick={() => navigate("openclaw")}>进入 OpenClaw 路线 →</button></div>
       </section>
-      <section className="final-thesis"><small>THE THESIS</small><blockquote>DSH 教你把 Agent <em>换得掉</em>；PI 教你把工作流<em>交出去</em>；nanobot 教你把系统<em>分清楚</em>。</blockquote></section>
+      <section className="final-thesis"><small>THE THESIS</small><blockquote>DSH 换骨架；PI 交工作流；nanobot 做分层；Claude Code 暴露<em>控制协议</em>；OpenClaw 搭起<em>控制平面</em>。</blockquote></section>
     </main>
   );
 }

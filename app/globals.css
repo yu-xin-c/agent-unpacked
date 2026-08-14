@@ -104,6 +104,8 @@ a { color: inherit; text-decoration: none; }
 .route-card.nanobot .route-icon { background: color-mix(in srgb, var(--yellow) 12%, var(--paper)); border-color: color-mix(in srgb, var(--yellow) 50%, var(--line)); }
 .route-card.dsh .route-icon { background: color-mix(in srgb, var(--blue) 10%, var(--paper)); border-color: color-mix(in srgb, var(--blue) 45%, var(--line)); }
 .route-card.pi .route-icon { background: color-mix(in srgb, #ef684c 10%, var(--paper)); border-color: color-mix(in srgb, #ef684c 46%, var(--line)); }
+.route-card.claude .route-icon { background: color-mix(in srgb, #d97757 10%, var(--paper)); border-color: color-mix(in srgb, #d97757 46%, var(--line)); }
+.route-card.openclaw .route-icon { background: color-mix(in srgb, #17a589 10%, var(--paper)); border-color: color-mix(in srgb, #17a589 46%, var(--line)); }
 .route-card h2 { font-size: 34px; letter-spacing: -.055em; margin: 22px 0 12px; }
 .route-card > p { color: var(--muted); line-height: 1.72; font-size: 14px; max-width: 580px; }
 .route-modules { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 18px; margin-top: 28px; }
@@ -366,7 +368,7 @@ a { color: inherit; text-decoration: none; }
 .compare-hero { max-width: 900px; margin-bottom: 72px; }
 .compare-hero h1 { font-size: clamp(50px, 7vw, 92px); }
 .comparison-table { border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); }
-.comparison-head, .comparison-row { display: grid; grid-template-columns: .72fr repeat(3, 1fr); }
+.comparison-head, .comparison-row { display: grid; grid-template-columns: .72fr repeat(5, 1fr); }
 .comparison-head { min-height: 105px; border-bottom: 1px solid var(--ink); }
 .comparison-head > * { border: 0; border-right: 1px solid var(--line); background: transparent; padding: 20px; text-align: left; }
 .comparison-head > *:last-child { border-right: 0; }
@@ -498,7 +500,7 @@ a { color: inherit; text-decoration: none; }
   .reading-order { grid-template-columns: 1fr; }
   .reading-order > * { border-right: 0; border-bottom: 1px solid var(--line); }
   .comparison-table { overflow-x: auto; }
-  .comparison-head, .comparison-row { min-width: 1040px; }
+  .comparison-head, .comparison-row { min-width: 1500px; }
   .choice-section h2 { margin-top: 28px; }
 }
 
