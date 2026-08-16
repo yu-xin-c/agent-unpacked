@@ -42,6 +42,24 @@ type CourseOverviewData = {
   tradeoffs: string[];
 };
 
+type ProjectStudyGuide = {
+  lenses: Array<{ title: string; question: string }>;
+  failureTrigger: string;
+  failureSymptom: string;
+  debugPath: string;
+  experiment: string;
+  deliverable: string;
+  reviewQuestions: Array<{ question: string; answer: string }>;
+};
+
+type SignatureDesign = {
+  name: string;
+  ordinary: string;
+  choice: string;
+  payoff: string;
+  cost: string;
+};
+
 const nanobotLessons: Lesson[] = [
   {
     id: "N01",
@@ -1115,8 +1133,11 @@ function Header({
 
   useEffect(() => {
     const saved = window.localStorage.getItem("agent-unpacked-theme") === "dark";
-    setDark(saved);
-    document.documentElement.dataset.theme = saved ? "dark" : "light";
+    const frame = window.requestAnimationFrame(() => {
+      setDark(saved);
+      document.documentElement.dataset.theme = saved ? "dark" : "light";
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, []);
 
   const toggleTheme = () => {
@@ -1162,15 +1183,16 @@ function Landing({ navigate }: { navigate: (route: RouteKey) => void }) {
         <div className="hero-copy">
           <div className="eyebrow"><span /> SOURCE-GUIDED · 逐层拆解</div>
           <h1>别只会用 Agent，<br /><em>看懂它为什么能工作。</em></h1>
-          <p>五条源码路线，一套统一问题：消息怎么进来、上下文怎么组装、模型如何调用工具、状态如何留下、系统如何长成产品。</p>
+          <p>五条源码路线，每课都从真实文件和符号出发：先跑调用链，再核对代码证据，最后用失败实验验证状态、权限与生命周期边界。</p>
           <div className="hero-actions">
             <button className="primary-action" onClick={() => navigate("dsh")}>从 DSH 开始 <span>→</span></button>
             <button className="text-action" onClick={() => navigate("compare")}>先看五种架构差异</button>
           </div>
           <div className="hero-stats">
             <div><strong>40</strong><span>节架构课</span></div>
+            <div><strong>80+</strong><span>源码锚点</span></div>
+            <div><strong>40</strong><span>动手实验</span></div>
             <div><strong>5</strong><span>源码路线</span></div>
-            <div><strong>1</strong><span>统一心智模型</span></div>
           </div>
         </div>
         <SystemSketch />
@@ -1302,6 +1324,13 @@ function CoursePage({
             <h1>{lesson.title}</h1>
             <blockquote style={{ borderColor: lesson.groupColor }}>{lesson.motto}</blockquote>
 
+            <div className="lesson-depth-contract" aria-label="本课学习产出">
+              <span><b>{lesson.flow.length}</b> 步调用链</span>
+              <span><b>{lessonDetails[lesson.id].evidence.length}</b> 个源码锚点</span>
+              <span><b>1</b> 个失败实验</span>
+              <span><b>3</b> 道架构评审题</span>
+            </div>
+
             <div className="lesson-tabs">
               <button className={tab === "lecture" ? "active" : ""} onClick={() => setTab("lecture")}>讲义</button>
               <button className={tab === "source" ? "active" : ""} onClick={() => setTab("source")}>源码地图 <span>{lesson.files.length}</span></button>
@@ -1327,13 +1356,13 @@ function CoursePage({
         {lesson ? (
           <>
             <div className="rail-progress"><span>路线进度</span><b>{String(index + 1).padStart(2, "0")} / {String(data.lessons.length).padStart(2, "0")}</b><i><em style={{ width: `${((index + 1) / data.lessons.length) * 100}%`, background: data.accent }} /></i></div>
-            <div className="rail-toc"><span>本页</span><a href="#start">小白导读</a><a href="#terms">先认术语</a><a href="#flow">动画运行路径</a><a href="#code-tour">逐行看代码</a><a href="#evidence">源码证据</a><a href="#architecture">架构定位</a><a href="#practice">练习与自测</a><a href="#takeaway">一句话带走</a></div>
-            <div className="rail-note"><span>给第一次读源码的你</span><p>看不懂全部代码很正常。先认输入与输出，再找中间是谁接手，最后才看实现细节。</p></div>
+            <div className="rail-toc"><span>本页</span><a href="#start">架构导读</a><a href="#terms">核心词汇</a><a href="#flow">运行路径</a><a href="#code-tour">执行协议</a><a href="#evidence">源码证据</a><a href="#architecture">状态与边界</a><a href="#trace-audit">调用链审计</a><a href="#invariants">设计不变量</a><a href="#failure">失败路径</a><a href="#practice">验证实验</a><a href="#review">架构复盘</a></div>
+            <div className="rail-note"><span>Agent 架构学习法</span><p>不要以“看懂多少代码”衡量进度。每读一层，都要能回答：状态归谁、控制权如何转移、边界怎样替换、失败在哪里收口。</p></div>
           </>
         ) : (
           <>
             <div className="rail-progress"><span>路线进度</span><b>00 / {String(data.lessons.length).padStart(2, "0")}</b><i><em style={{ width: "4%", background: data.accent }} /></i></div>
-            <div className="rail-toc"><span>总览目录</span><a href="#core-idea">核心理念</a><a href="#differences">五种架构区别</a><a href="#journey">完整请求旅程</a><a href="#course-map">八课路线图</a><a href="#curiosity">关键悬念</a><a href="#fit">适合与代价</a></div>
+            <div className="rail-toc"><span>总览目录</span><a href="#core-idea">核心理念</a><a href="#design-gems">优秀设计</a><a href="#differences">五种架构区别</a><a href="#journey">完整请求旅程</a><a href="#course-map">八课路线图</a><a href="#curiosity">关键悬念</a><a href="#fit">适合与代价</a></div>
             <div className="rail-note"><span>总—分阅读法</span><p>先带着全局问题看八个局部，学完每一课后再回来检查：它究竟改变了整套系统的哪条边界？</p></div>
           </>
         )}
@@ -1361,7 +1390,7 @@ function CourseOverview({
         <p>{overview.thesis}</p>
         <div className="overview-actions">
           <button onClick={() => selectLesson(project, data.lessons[0].id)}>从 {data.lessons[0].id} 开始拆解 <span>→</span></button>
-          <a href="#differences">先看它与另外两种架构的区别</a>
+          <a href="#design-gems">先看它最值得学的设计</a>
         </div>
         <div className="opening-prompt">
           <span>开场思考</span>
@@ -1379,8 +1408,24 @@ function CourseOverview({
         </div>
       </section>
 
+      <section id="design-gems" className="overview-section">
+        <div className="overview-section-head"><span>02</span><div><small>SIGNATURE DESIGNS</small><h2>单独拆：这个系统最值得学的优秀设计</h2></div></div>
+        <p className="overview-lead">不做“功能很多”的表面总结。每一项都对照常规写法，解释它为何这样选、换来了什么，以及把复杂度转移到了哪里。</p>
+        <div className="design-gem-list">
+          {systemDesignGems[project].map((item, index) => (
+            <article key={item.name}>
+              <header><span>{String(index + 1).padStart(2, "0")}</span><h3>{item.name}</h3></header>
+              <div><small>常规做法</small><p>{item.ordinary}</p></div>
+              <div><small>它的选择</small><p>{item.choice}</p></div>
+              <div><small>架构收益</small><p>{item.payoff}</p></div>
+              <div><small>代价 / 边界</small><p>{item.cost}</p></div>
+            </article>
+          ))}
+        </div>
+      </section>
+
       <section id="differences" className="overview-section">
-        <div className="overview-section-head"><span>02</span><div><small>SAME PROBLEM, DIFFERENT BET</small><h2>它和另外两种架构，根本区别在哪里</h2></div></div>
+        <div className="overview-section-head"><span>03</span><div><small>SAME PROBLEM, DIFFERENT BET</small><h2>它和另外四种架构，根本区别在哪里</h2></div></div>
         <p className="overview-lead">三者都能完成“模型调用工具”这件事。真正不同的是：当系统变复杂时，它们选择把复杂度放在哪里。</p>
         <div className="architecture-bets" role="table" aria-label="DSH、PI Agent 与 nanobot 核心架构区别">
           <div className="architecture-bet-head" role="row"><span>架构</span><span>它相信什么</span><span>最擅长什么</span><span>需要付出的代价</span></div>
@@ -1393,13 +1438,13 @@ function CourseOverview({
       </section>
 
       <section id="journey" className="overview-section">
-        <div className="overview-section-head"><span>03</span><div><small>ONE REQUEST JOURNEY</small><h2>先把一条完整请求跑通</h2></div></div>
+        <div className="overview-section-head"><span>04</span><div><small>ONE REQUEST JOURNEY</small><h2>先把一条完整请求跑通</h2></div></div>
         <p className="overview-lead">后面的八节课，会分别放大这条链路中的一个边界。先看全局动画，再进入局部，你就不会在文件和类型之间迷路。</p>
         <FlowDiagram steps={overview.journey} color={data.accent} />
       </section>
 
       <section id="course-map" className="overview-section">
-        <div className="overview-section-head"><span>04</span><div><small>FROM WHOLE TO PARTS</small><h2>八节课怎样拼成一个完整答案</h2></div></div>
+        <div className="overview-section-head"><span>05</span><div><small>FROM WHOLE TO PARTS</small><h2>八节课怎样拼成一个完整答案</h2></div></div>
         <div className="overview-course-map">
           {data.lessons.map((lesson, index) => (
             <button key={lesson.id} onClick={() => selectLesson(project, lesson.id)}>
@@ -1414,7 +1459,7 @@ function CourseOverview({
       </section>
 
       <section id="curiosity" className="overview-section">
-        <div className="overview-section-head"><span>05</span><div><small>QUESTIONS THAT PULL YOU FORWARD</small><h2>带着这三个悬念去读源码</h2></div></div>
+        <div className="overview-section-head"><span>06</span><div><small>QUESTIONS THAT PULL YOU FORWARD</small><h2>带着这三个悬念去读源码</h2></div></div>
         <div className="curiosity-list">
           {overview.questions.map((item, index) => (
             <details key={item.question}>
@@ -1426,7 +1471,7 @@ function CourseOverview({
       </section>
 
       <section id="fit" className="overview-section">
-        <div className="overview-section-head"><span>06</span><div><small>WHEN TO CHOOSE IT</small><h2>什么情况下值得学习这套设计</h2></div></div>
+        <div className="overview-section-head"><span>07</span><div><small>WHEN TO CHOOSE IT</small><h2>什么情况下值得学习这套设计</h2></div></div>
         <div className="fit-grid">
           <div><small>更适合</small><h3>当你需要这些能力</h3>{overview.bestFor.map((item) => <p key={item}><span>✓</span>{item}</p>)}</div>
           <div><small>先知道代价</small><h3>它不是免费的午餐</h3>{overview.tradeoffs.map((item) => <p key={item}><span>!</span>{item}</p>)}</div>
@@ -1447,6 +1492,127 @@ function repoSourceUrl(project: ProjectKey, file: string) {
   const targetType = /\/[^/]+\.[a-z0-9]+$/i.test(`/${file}`) ? "blob" : "tree";
   return `${data.repo}/${targetType}/${data.branch}/${file}`;
 }
+
+const projectStudyGuides: Record<ProjectKey, ProjectStudyGuide> = {
+  dsh: {
+    lenses: [
+      { title: "作用域", question: "这项能力挂在哪个 ctx 上，谁创建、谁销毁？" },
+      { title: "投影", question: "事实以什么事件保存，又被谁投影成 UI 或模型消息？" },
+      { title: "组合顺序", question: "Profile、Bundle、patch 或 provider 的先后次序会改变什么？" },
+    ],
+    failureTrigger: "撤掉一个 provider、调换两个插件的启动顺序，或让 effect 没有随 scope 回收。",
+    failureSymptom: "消费者仍然存在，但依赖服务为空、事件重复触发，或者旧插件留下的监听器继续影响新会话。",
+    debugPath: "先打印最终配置树，再沿 ctx 的 provide / on / effect 查注册位置，最后核对 dispose 是否与安装发生在同一 scope。",
+    experiment: "复制当前 profile，只替换本课涉及的一个 provider 或 patch 节点；保持消费者代码不变，对照运行前后的事件轨迹。",
+    deliverable: "一张“插件 → 提供服务 → 消费者 → 清理动作”的四列表，以及一次替换前后的事件差异。",
+    reviewQuestions: [
+      { question: "为什么 DSH 不把 Agent Loop 设为不可替换的核心？", answer: "因为 Loop 也只是消费 Session、LLM 与 Tools 的一种策略。把它放进插件树，产品可以替换轮次语义而不推翻其他能力。" },
+      { question: "如何判断一个插件边界设计得好不好？", answer: "看它是否只通过 ctx 暴露服务和事件、是否拥有明确 scope，以及卸载后能否撤回全部副作用。" },
+      { question: "事件溯源在这里解决的不是哪类问题？", answer: "它不负责替你选择业务策略；它解决事实记录、回放、分支和多视图一致性，策略仍由插件决定。" },
+    ],
+  },
+  pi: {
+    lenses: [
+      { title: "最小核心", question: "这段逻辑是循环必需品，还是应该留给 AgentSession / Extension？" },
+      { title: "事件协议", question: "不同模型与工具被翻译成了哪些稳定事件？" },
+      { title: "会话树", question: "当前 leaf、parentId 与可见分支怎样共同决定模型历史？" },
+    ],
+    failureTrigger: "把产品策略塞回 Agent core、混淆 steering 与 follow-up，或原地覆盖 JSONL 中的旧节点。",
+    failureSymptom: "核心开始依赖某个 UI，用户补充消息在错误边界介入，或者切换分支后历史与界面互相矛盾。",
+    debugPath: "先对照 Agent core 发出的事件，再检查 AgentSession 的队列与资源装配，最后沿 session tree 的 leaf 向 parentId 回溯。",
+    experiment: "写一个最小 Extension：只监听本课相关事件并记录时间线，再增加一个轻量工具或命令，验证无需修改 Agent core。",
+    deliverable: "一份事件时间线、一棵三节点会话树，以及扩展注册和卸载前后的能力清单。",
+    reviewQuestions: [
+      { question: "PI 的“小核心”是否等于功能少？", answer: "不是。功能被移到模型协议、AgentSession、资源加载和 ExtensionAPI；核心小指职责少，不指产品能力少。" },
+      { question: "为什么 steering 和 follow-up 要分成两种队列？", answer: "它们介入循环的时机不同：前者影响当前工作，后者等待当前轮次收口。混在一起会让停止条件不可预测。" },
+      { question: "JSONL 分支相比复制整份历史好在哪里？", answer: "节点只追加并通过 parentId 复用公共祖先，分支成本低，审计时也能看见真正的选择路径。" },
+    ],
+  },
+  nanobot: {
+    lenses: [
+      { title: "消息边界", question: "外部协议在哪一步被翻译成内部统一消息？" },
+      { title: "上下文投影", question: "Session 保存了什么，本轮又只选择了什么给模型？" },
+      { title: "生命周期", question: "Channel、Runner、Memory 与 Gateway 分别由谁启动和关闭？" },
+    ],
+    failureTrigger: "让 Channel 直接调用 Runner、让 Provider 泄漏厂商字段，或把 Gateway 的长期任务塞进单轮 AgentLoop。",
+    failureSymptom: "新增渠道必须复制推理逻辑，切换模型时上层大量改动，或者一次请求结束后仍残留后台任务和连接。",
+    debugPath: "从 InboundMessage 的字段开始，沿 MessageBus、ContextBuilder、Runner、OutboundMessage 逐段记录输入输出，不要从最终回复倒猜。",
+    experiment: "做一个只收发内存消息的 FakeChannel，接到现有 MessageBus；再用 FakeProvider 返回一次 tool call，观察 Runner 是否无需知道渠道类型。",
+    deliverable: "一条可复制的请求 trace、FakeChannel 的输入输出样例，以及各层生命周期负责人清单。",
+    reviewQuestions: [
+      { question: "MessageBus 的价值只是异步吗？", answer: "异步只是手段；更重要的是它建立统一事件边界，让渠道生命周期、路由与推理执行不必直接耦合。" },
+      { question: "ContextBuilder 为什么不能直接等于 Session？", answer: "Session 是持久事实，ContextBuilder 是本轮投影。前者回答发生过什么，后者决定此刻让模型看见什么。" },
+      { question: "Gateway 为什么不是一个更大的 AgentLoop？", answer: "Gateway 拥有长期基础设施的生命周期；AgentLoop 只拥有一轮产品交互。两者的退出条件和失败恢复完全不同。" },
+    ],
+  },
+  claude: {
+    lenses: [
+      { title: "产品会话", question: "QueryEngine 保存哪些跨轮状态，queryLoop 又只保存哪些运行状态？" },
+      { title: "副作用门禁", question: "tool_use 从模型输出到真实执行，依次经过哪些校验、权限和 Hook？" },
+      { title: "可恢复上下文", question: "Prompt、compact summary 与 JSONL transcript 分别承担什么职责？" },
+    ],
+    failureTrigger: "绕过权限直接调用工具、把 REPL 状态塞进 queryLoop，或压缩历史时覆盖原始 transcript。",
+    failureSymptom: "模型意图未经许可就变成副作用，SDK 无法复用循环，或者长会话压缩后既不能审计也不能正确恢复。",
+    debugPath: "从 CLI / REPL 的一次 ask 进入 QueryEngine，记录 queryLoop 事件；遇到 tool_use 时单独追 schema → permission → pre-hook → call → post-hook。",
+    experiment: "注册一个永远拒绝的测试工具或 PreToolUse Hook，观察模型事件、权限结果、transcript 与 UI 是否对同一次拒绝保持一致。",
+    deliverable: "一张 QueryEngine / queryLoop 状态边界图，以及一次被拒绝工具调用从模型到 UI 的完整证据链。",
+    reviewQuestions: [
+      { question: "第三方复原源码最适合验证什么？", answer: "适合验证大型 Coding Agent 的模块边界和调用关系；不应把实现细节表述为 Anthropic 官方承诺或官方源码事实。" },
+      { question: "模型发出 tool_use 为什么仍不算执行？", answer: "tool_use 只是意图数据。schema 校验、权限决策、Hook 和 tool.call 之后，真实副作用才发生。" },
+      { question: "压缩与持久化为什么必须分离？", answer: "压缩服务模型的上下文预算，持久化服务恢复与审计；用同一份可变 messages 同时承担两者会丢事实。" },
+    ],
+  },
+  openclaw: {
+    lenses: [
+      { title: "控制平面", question: "Gateway 与 routing 在执行前补齐了哪些身份、配置和会话信息？" },
+      { title: "尝试边界", question: "Harness、Runner、attempt 与 agent-core 各自在什么失败范围内重试或退出？" },
+      { title: "代际一致性", question: "运行中的请求如何继续持有旧 runtime，新请求又何时切到新 generation？" },
+    ],
+    failureTrigger: "让 Channel 直连 core、在运行中原地改写模型目录，或让插件 import 未公开的 src 内部模块。",
+    failureSymptom: "会话串到错误 Agent，热更新把单次运行撕成两套配置，或一次内部重构就让全部第三方插件失效。",
+    debugPath: "按 Channel → route → session key → Harness selection → attempt → agent-core 的顺序记录 trace id，并确认每层只补充自己拥有的信息。",
+    experiment: "构造两个不同 channel / peer 的请求，记录它们解析出的 session key；随后发布一个新 runtime generation，验证旧请求不被中途切换。",
+    deliverable: "两条带身份字段的端到端 trace、一张 attempt 失败边界图，以及新旧 generation 的租约时间线。",
+    reviewQuestions: [
+      { question: "为什么 OpenClaw 同时需要 Harness、Runner 和 agent-core？", answer: "core 提供可复用循环原语，Runner 负责内建一次尝试，Harness 决定采用哪套运行实现；三者面对不同变化速度。" },
+      { question: "session key 为什么属于控制平面？", answer: "它在执行前把渠道、账号、对话与 Agent 身份稳定编码，决定历史归属；core 不应该猜外部身份。" },
+      { question: "prepared runtime 为什么按 generation 发布？", answer: "模型目录、认证和工具需要作为一致快照被读取。原子发布能避免请求看到一半新、一半旧的配置。" },
+    ],
+  },
+};
+
+const systemDesignGems: Record<ProjectKey, SignatureDesign[]> = {
+  dsh: [
+    { name: "Scope 拥有副作用", ordinary: "常见插件系统只负责 register，监听器、连接和缓存的清理要靠作者自觉。", choice: "Cordis 把 service、event listener 与 effect 都挂在 Context / Scope 生命周期下，安装与撤销成为同一协议。", payoff: "热重载、局部 Agent 与测试隔离不再依赖全局清场；插件能真正做到可插拔。", cost: "作者必须理解 scope 层级，错误挂载仍会造成能力泄漏或过早销毁。" },
+    { name: "SessionEvent 是唯一事实", ordinary: "许多 Agent 同时维护 messages、UI 列表、日志和恢复快照，再用同步代码保持一致。", choice: "DSH 只追加 SessionEvent；模型消息、UI trajectory、fork 与 transcript 都从事件流投影。", payoff: "回放、审计和分支天然共享一份事实，新增视图不需要再发明一套存储。", cost: "投影逻辑和事件版本必须稳定，读代码时也要适应“状态来自重放”而非原地对象。" },
+    { name: "Seam + Scope 换执行世界", ordinary: "换沙箱或文件系统时，往往给每个工具增加 backend 参数和 if 分支。", choice: "消费者依赖 seam，具体 provider 在 scope 中解析；局部 provider 可以 shadow 全局实现。", payoff: "一次替换能让整组工具进入新的模型、文件系统或运行环境，上层逻辑保持不变。", cost: "能力解析是间接的，排查问题必须同时查看 definition、provider 与当前 scope。" },
+    { name: "Profile / Bundle / patch 组装产品", ordinary: "Web、CLI、Headless 各有入口文件，功能差异靠条件判断不断累积。", choice: "Profile 选择形态，Bundle 展开插件集合，patch 按稳定 id 覆盖具体节点。", payoff: "产品差异变成可打印、可比较的配置树，而不是散在代码里的隐藏分支。", cost: "组合顺序本身成为架构，需要稳定 id、冲突规则和清晰的配置诊断。" },
+  ],
+  pi: [
+    { name: "Agent core 只保留循环", ordinary: "Coding Agent 常把计划、权限、界面和子任务策略一起写进中央 Agent 类。", choice: "PI core 只管理状态、模型事件、工具调用和停止条件，产品策略留给 AgentSession 与扩展。", payoff: "同一循环能服务 CLI、SDK 与定制工作流，使用者不会被内置产品决策锁住。", cost: "高级工作流不会凭空出现，调用者必须自行选择资源、扩展与交互策略。" },
+    { name: "pi-ai 先统一模型事件", ordinary: "上层直接消费各厂商 SDK，stream chunk、reasoning 和 tool call 语义到处不同。", choice: "provider 先把差异翻译成 start、delta、toolcall、done、error 等稳定事件。", payoff: "Agent core、UI 与测试只面对一种词汇，增加模型不会扩大核心分支。", cost: "统一协议必须容纳各家独特能力，过度抽象会丢信息，过度暴露又会污染上层。" },
+    { name: "steering / follow-up 双队列", ordinary: "运行中收到的新消息通常只有“立即打断”或“全部等结束”两种粗糙选择。", choice: "PI 明确区分影响当前工作的 steering 与等待当前轮次收口的 follow-up。", payoff: "用户介入时机成为可推理的协议，Agent 的继续与停止条件更稳定。", cost: "产品层必须给用户清楚反馈，否则两种队列的差异会变成隐蔽行为。" },
+    { name: "JSONL 父子树表达分支", ordinary: "分支会话常复制整份历史，或原地修改当前 messages。", choice: "每个节点记录 id 与 parentId，当前 leaf 决定可见链，公共祖先自然复用。", payoff: "fork、回退、resume 与审计都落在同一简单文件格式上。", cost: "读取必须重建链，垃圾分支、迁移和并发写入仍需要产品层治理。" },
+  ],
+  nanobot: [
+    { name: "MessageBus 统一多渠道入口", ordinary: "每个 Channel 收到消息后直接调用 Agent，再自行处理并发与回复。", choice: "Channel 只翻译 Inbound / OutboundMessage，异步 MessageBus 成为跨层边界。", payoff: "新增飞书、终端或 Web 入口时不复制推理逻辑，渠道与核心也能独立测试。", cost: "消息格式必须足够表达各渠道差异，队列还要承担背压、顺序与关闭语义。" },
+    { name: "AgentLoop / Runner 分离", ordinary: "一个 while 循环同时负责路由、会话、Prompt、模型重试、工具和回复投递。", choice: "Loop 拥有一次产品交互，Runner 拥有一次模型—工具多迭代执行。", payoff: "渠道问题与推理问题能分别定位，同一 Runner 也能被不同入口复用。", cost: "交接面的 RunSpec 必须清晰，否则状态会在两层重复持有。" },
+    { name: "ContextBuilder 做受控投影", ordinary: "把人格、项目规则、全部历史和记忆直接拼成越来越长的 system prompt。", choice: "不同来源先独立保存，再按本轮工作区、预算和可见性组装模型消息。", payoff: "Session、长期记忆与当前上下文不再混为一谈，权限和事实来源更容易追溯。", cost: "排序、裁剪和冲突规则本身需要测试；错误投影比普通字符串拼接更难肉眼发现。" },
+    { name: "Gateway 是 composition root", ordinary: "API、Channel、Cron 与 Memory 在各模块 import 时偷偷启动。", choice: "Gateway 显式创建长期服务并统一关闭，AgentRunner 不拥有基础设施生命周期。", payoff: "启动顺序、资源回收与部署边界一目了然，轻量项目也不必靠全局单例维持。", cost: "Gateway 会成为组装热点，需要防止配置和条件分支重新堆成巨型入口。" },
+  ],
+  claude: [
+    { name: "轻入口与完整产品延迟加载", ordinary: "CLI 一启动就加载交互 UI、配置、插件和完整运行时，即使用户只查版本。", choice: "轻量入口先处理 fast paths，只有默认产品路径才动态加载 main、REPL 与完整服务。", payoff: "启动更快，后台命令与诊断路径也减少不必要副作用。", cost: "入口分流和动态 import 增加跳转层级，排查启动问题要同时看两处。" },
+    { name: "QueryEngine 包住 queryLoop", ordinary: "一个函数同时承担跨轮会话、模型工具循环、持久化与 UI 事件。", choice: "QueryEngine 拥有会话级状态与投影，queryLoop 只推进一次运行的模型—工具迭代。", payoff: "REPL、print、SDK 和恢复流程能共享同一心脏，又不把产品状态塞进循环。", cost: "事件在两层之间穿梭，边界不清时容易重复记录或把短期状态错误持久化。" },
+    { name: "工具执行是完整安全协议", ordinary: "模型给出 tool_use 后直接查表并调用 handler。", choice: "输入 schema、权限决策、交互审批、PreToolUse、call 与 PostToolUse 组成有序门禁。", payoff: "模型意图与真实副作用明确分离，组织策略、插件和 UI 都能在执行前介入。", cost: "执行链更长，Hook 顺序、错误语义和并发工具需要严格测试。" },
+    { name: "压缩视图，不覆盖 transcript", ordinary: "上下文超限时删掉旧 messages，或用摘要直接替换磁盘历史。", choice: "compact 改变模型可见视图，JSONL transcript 继续保存事实与边界。", payoff: "长会话既能继续运行，又保留恢复、审计和 UI 展示所需的完整证据。", cost: "摘要质量、边界恢复和 token 预算之间存在真实权衡，不能只看压缩率。" },
+  ],
+  openclaw: [
+    { name: "Gateway / Routing 先完成归属", ordinary: "Channel 收到消息就选择默认 Agent，执行中再猜用户、线程和历史。", choice: "Gateway 先处理连接，routing 根据 channel、account、peer、thread 与 binding 解析 Agent 和 session key。", payoff: "执行层面对的是身份稳定、会话已归属的请求，多渠道不会轻易串历史。", cost: "路由优先级和绑定配置变成关键控制面，错误配置可能表现为“模型记错人”。" },
+    { name: "Harness / Runner / core 三层变化率", ordinary: "所有运行方式共享一个越来越大的 AgentRunner。", choice: "core 放可复用原语，Runner 管内建 attempt，Harness registry 允许整套运行实现被选择或替换。", payoff: "内建路径可以持续优化，实验性或插件 Harness 又不必侵入稳定核心。", cost: "三层名称相近，若没有清楚 facade 和选择策略，维护者会绕过边界直接 import。" },
+    { name: "Prepared runtime 按 generation 发布", ordinary: "模型目录、认证和工具配置热更新时原地改对象。", choice: "先构建完整 generation，再原子发布；运行中请求持有自己的 lease。", payoff: "一个请求不会看到半新半旧的配置，刷新失败也不会污染当前可用运行时。", cost: "旧 generation 的资源回收、引用计数和可观测性会增加实现复杂度。" },
+    { name: "Plugin SDK 限制依赖方向", ordinary: "插件从 src 任意深层路径 import 内部类型，短期方便，长期全部耦合。", choice: "外部扩展只依赖公开 barrel、资源清单和 registry，内部实现保留重构自由。", payoff: "插件生态与主仓库可以用不同速度演进，兼容范围也更容易声明。", cost: "公开契约需要谨慎扩展；暂未暴露的能力不能靠内部 import 走捷径。" },
+  ],
+};
 
 const glossaryRules: Array<{ match: RegExp; meaning: string }> = [
   { match: /session|history|jsonl|trajectory/i, meaning: "会话与历史记录：负责把已经发生的消息、工具结果和状态保存下来，方便恢复与回放。" },
@@ -1479,28 +1645,50 @@ function explainFlowStep(steps: string[], index: number) {
   return `${current} 接过 ${previous} 的结果，只完成自己的职责，再把标准化后的结果交给 ${next}。`;
 }
 
+function traceInput(steps: string[], index: number) {
+  if (index === 0) return "用户请求、外部事件或上层已经完成归一化的入口参数";
+  return `${steps[index - 1]} 产出的结构化结果，以及当前会话 / 运行时上下文`;
+}
+
+function traceOutput(steps: string[], index: number) {
+  if (index === steps.length - 1) return "可展示、可持久化，或能被下一轮继续消费的最终结果";
+  return `交给 ${steps[index + 1]} 的标准对象、事件或可等待结果`;
+}
+
+function invariantExplanation(point: string) {
+  if (/会话|历史|持久|记录|分支|真源/i.test(point)) return "它保证恢复、回放和 UI 不需要维护第二份互相同步的事实；一旦破坏，最先出现的是历史分叉与不可审计。";
+  if (/工具|权限|策略|校验|沙箱/i.test(point)) return "它把模型意图与真实副作用隔开；一旦破坏，工具协议会退化成不可控制的函数直调。";
+  if (/模型|provider|流|响应/i.test(point)) return "它把厂商差异封在传输边界；一旦破坏，Agent Loop 会被供应商字段和流式细节污染。";
+  if (/上下文|预算|压缩|记忆/i.test(point)) return "它区分“已经保存”与“本轮可见”；一旦破坏，系统会在 token 超限、事实丢失和上下文串线之间摇摆。";
+  if (/消息|队列|渠道|入口|路由/i.test(point)) return "它让外部入口只负责翻译和投递；一旦破坏，每增加一个渠道都要复制核心执行逻辑。";
+  if (/插件|组合|替换|扩展|注册/i.test(point)) return "它让变化集中在稳定扩展面；一旦破坏，新增能力就只能修改中心模块并扩大回归范围。";
+  if (/生命周期|启动|关闭|副作用|回收/i.test(point)) return "它确保资源的创建者也负责结束；一旦破坏，监听器、连接与后台任务会跨轮残留。";
+  return "它约束这一层只拥有自己的状态和转换；一旦破坏，边界两侧会开始互相读取内部细节。";
+}
+
 function Lecture({ lesson, project }: { lesson: Lesson; project: ProjectKey }) {
   const detail = lessonDetails[lesson.id];
+  const study = projectStudyGuides[project];
 
   return (
     <article className="lecture">
       <section id="start">
         <div className="section-number">01</div>
         <div className="section-wide">
-          <h2>小白导读：这节课到底讲什么</h2>
-          <p className="section-lead">先别急着钻进源码。我们先用“问题—类比—目标”三步建立直觉，知道自己到底要找什么。</p>
+          <h2>架构导读：先定位这一层的职责</h2>
+          <p className="section-lead">先把它放回完整 Agent 运行时：它解决哪类系统压力、拥有哪段状态、把控制权交给谁。源码只是这些设计选择的证据。</p>
           <div className="beginner-overview">
-            <div><small>如果没有这一层</small><h3>系统会先乱在哪里？</h3><p>{lesson.why}</p></div>
-            <div><small>生活中的类比</small><h3>把它想成什么？</h3><p>{lesson.model}</p></div>
-            <div><small>学完本课</small><h3>你应该能说清</h3><p>{lesson.motto}</p></div>
+            <div><small>ARCHITECTURE PRESSURE</small><h3>系统为什么需要这一层？</h3><p>{lesson.why}</p></div>
+            <div><small>MENTAL MODEL</small><h3>先建立一个可用的心智模型</h3><p>{lesson.model}</p></div>
+            <div><small>LEARNING OUTCOME</small><h3>学完后要能解释什么</h3><p>{lesson.motto}</p></div>
           </div>
         </div>
       </section>
       <section id="terms">
         <div className="section-number">02</div>
         <div className="section-wide">
-          <h2>先认几个术语，再看流程</h2>
-          <p className="section-lead">不用背定义。只要能分清每个词“负责什么、不负责什么”，后面的代码就会容易很多。</p>
+          <h2>建立本课的架构词汇表</h2>
+          <p className="section-lead">不背名词定义，只识别职责边界：它接收什么、拥有什么状态、允许产生什么副作用，以及明确不负责什么。</p>
           <div className="glossary-grid">
             {lesson.flow.slice(0, 4).map((term, index) => (
               <div key={term}><span>{String(index + 1).padStart(2, "0")}</span><strong>{term}</strong><p>{explainTerm(term)}</p></div>
@@ -1511,16 +1699,16 @@ function Lecture({ lesson, project }: { lesson: Lesson; project: ProjectKey }) {
       <section id="flow">
         <div className="section-number">03</div>
         <div className="section-wide">
-          <h2>动画演示：一个请求怎样跑完整条链路</h2>
-          <p className="section-lead">观察亮起的节点。每一步只接手上一层的结果，完成自己的职责，再把标准化结果交给下一层。</p>
+          <h2>运行路径：控制权怎样穿过整条链路</h2>
+          <p className="section-lead">观察控制权、数据与状态怎样一起移动。重点不是箭头数量，而是哪一步创建状态、哪一步只做转换、哪一步可能产生真实副作用。</p>
           <FlowDiagram steps={lesson.flow} color={lesson.groupColor} />
         </div>
       </section>
       <section id="code-tour">
         <div className="section-number">04</div>
         <div className="section-wide">
-          <h2>把流程翻译成代码</h2>
-          <p className="section-lead">下面是为了教学简化过的控制流，不要求你先懂语法。按照右侧顺序找输入、处理、等待和输出即可。</p>
+          <h2>把架构还原成执行协议</h2>
+          <p className="section-lead">下面是明确标注的等价伪代码，用来暴露控制流，而不是冒充仓库原文。先找输入与等待点，再用下一节的真实文件和符号核对。</p>
           <div className="beginner-code-tour">
             <div className="annotated-code" aria-label={`${lesson.id} 教学示意代码`}>
               <div><span>concept sketch</span><b>{lesson.id.toLowerCase()}_flow</b></div>
@@ -1537,8 +1725,8 @@ function Lecture({ lesson, project }: { lesson: Lesson; project: ProjectKey }) {
       <section id="evidence">
         <div className="section-number">05</div>
         <div className="section-wide">
-          <h2>代码证据</h2>
-          <p className="section-lead">不要只记结论。打开下面两个位置，沿着符号与调用方各追一层，就能在源码里验证这一课的边界。</p>
+          <h2>代码证据：用两个锚点证明一个结论</h2>
+          <p className="section-lead">架构结论至少需要两侧证据：一侧看契约或状态定义，另一侧看组装、消费或生命周期。只看单个类，很容易把局部实现误判成整体设计。</p>
           <div className="evidence-grid">
             {detail.evidence.map((item, index) => (
               <a className="evidence-card" href={repoSourceUrl(project, item.file)} target="_blank" rel="noreferrer" key={`${item.file}-${item.symbol}`}>
@@ -1554,7 +1742,7 @@ function Lecture({ lesson, project }: { lesson: Lesson; project: ProjectKey }) {
       <section id="architecture">
         <div className="section-number">06</div>
         <div className="section-wide">
-          <h2>放回整体架构</h2>
+          <h2>状态归属、控制边界与上下游</h2>
           <div className="architecture-card" style={{ borderColor: lesson.groupColor }}>
             <small>BOUNDARY / OWNERSHIP</small>
             <p>{detail.architecture}</p>
@@ -1564,42 +1752,106 @@ function Lecture({ lesson, project }: { lesson: Lesson; project: ProjectKey }) {
           </div>
         </div>
       </section>
-      <section>
+      <section id="trace-audit">
         <div className="section-number">07</div>
-        <div className="section-wide"><h2>这一层解决了什么</h2><div className="point-grid">{lesson.points.map((point, index) => <div key={point}><span>0{index + 1}</span><b>{point}</b></div>)}</div></div>
+        <div className="section-wide">
+          <h2>逐节点调用链审计</h2>
+          <p className="section-lead">流程图只告诉你“谁接谁”。这张表继续追问每一步拿到什么、只允许做什么、必须交出什么。读源码时逐行打勾。</p>
+          <div className="trace-audit" role="table" aria-label={`${lesson.id} 调用链审计表`}>
+            <div className="trace-audit-head" role="row"><span>节点</span><span>输入</span><span>本层职责</span><span>输出 / 检查点</span></div>
+            {lesson.flow.map((step, index) => (
+              <div className="trace-audit-row" role="row" key={`${step}-${index}`}>
+                <strong><small>{String(index + 1).padStart(2, "0")}</small>{step}</strong>
+                <p>{traceInput(lesson.flow, index)}</p>
+                <p>{explainTerm(step)}</p>
+                <p>{traceOutput(lesson.flow, index)}<code>检查：{index === 0 ? detail.evidence[0].symbol : index === lesson.flow.length - 1 ? detail.evidence.at(-1)?.symbol : `${lesson.flow[index - 1]} → ${step}`}</code></p>
+              </div>
+            ))}
+          </div>
+        </div>
       </section>
-      <section id="practice">
+      <section id="invariants">
         <div className="section-number">08</div>
         <div className="section-wide">
-          <h2>常见误区、动手练习与自测</h2>
-          <div className="pitfall-list">
-            <div><span>误区 01</span><p>把“{lesson.title.split("：")[0]}”理解成整个系统。它只是链路中的一个职责边界，前后仍然需要别的模块配合。</p></div>
-            <div><span>误区 02</span><p>把流程图的箭头理解成函数一定直接互调。源码里也可能通过事件、队列、注册表或依赖注入完成接力。</p></div>
-            <div><span>误区 03</span><p>试图第一次就读懂所有实现。小白更适合先追一条成功路径，再单独补错误、并发和生命周期分支。</p></div>
+          <h2>三副“源码眼镜”与设计不变量</h2>
+          <p className="section-lead">真正的架构不在目录名里，而在系统始终不愿破坏的约束里。先用路线级问题定位，再用本课不变量判断实现是否跑偏。</p>
+          <div className="study-lenses">
+            {study.lenses.map((lens, index) => <div key={lens.title}><span>LENS 0{index + 1}</span><strong>{lens.title}</strong><p>{lens.question}</p></div>)}
           </div>
-          <div className="practice-lab">
+          <div className="invariant-grid">
+            {lesson.points.map((point, index) => (
+              <div key={point}><span>INVARIANT 0{index + 1}</span><h3>{point}</h3><p>{invariantExplanation(point)}</p></div>
+            ))}
+          </div>
+        </div>
+      </section>
+      <section id="failure">
+        <div className="section-number">09</div>
+        <div className="section-wide">
+          <h2>失败路径：故意拆坏，再学会定位</h2>
+          <p className="section-lead">只读成功路径容易产生“我好像懂了”的错觉。下面把一个边界主动破坏，观察症状，再沿最短证据链回到根因。</p>
+          <div className="failure-lab">
+            <div><small>01 · INJECT</small><h3>怎样制造故障</h3><p>{study.failureTrigger}</p></div>
+            <div><small>02 · OBSERVE</small><h3>你会先看到什么</h3><p>{study.failureSymptom}</p></div>
+            <div><small>03 · TRACE</small><h3>最短调试路径</h3><p>{study.debugPath}</p></div>
+          </div>
+          <div className="debug-checkpoints">
+            <span>建议断点</span>
+            {detail.evidence.map((item) => <code key={item.symbol}>{item.symbol}</code>)}
+            <span>最终出口</span><code>{lesson.flow.at(-1)}</code>
+          </div>
+        </div>
+      </section>
+      <section id="practice">
+        <div className="section-number">10</div>
+        <div className="section-wide">
+          <h2>35 分钟动手实验：留下可检查的产出</h2>
+          <p className="section-lead">不是“把仓库跑起来”就算学会。实验必须留下 trace、边界表或前后对照，别人才能复查你的结论。</p>
+          <div className="practice-lab deep-practice">
             <div>
-              <small>10 MINUTE LAB</small>
-              <h3>跟着源码做一次“小侦探”</h3>
+              <small>HANDS-ON LAB</small>
+              <h3>{lesson.id} · 最小验证实验</h3>
               <ol>
-                <li>打开 <code>{detail.evidence[0].file}</code>，搜索 <code>{detail.evidence[0].symbol}</code>。</li>
-                <li>找到它的输入来自哪里，并写下上游节点：<code>{lesson.flow[0]}</code>。</li>
-                <li>找到结果交给谁，并写下最终出口：<code>{lesson.flow.at(-1)}</code>。</li>
-                <li>用“谁拥有状态、谁只做转换”总结这层边界。</li>
+                <li><b>0–8 分钟：</b>打开 <code>{detail.evidence[0].file}</code>，搜索 <code>{detail.evidence[0].symbol}</code>，只追一层调用方与一层被调用方。</li>
+                <li><b>8–16 分钟：</b>打开 <code>{detail.evidence[1].file}</code>，确认第二个证据是否与第一个共享同一状态、事件或协议。</li>
+                <li><b>16–28 分钟：</b>{study.experiment}</li>
+                <li><b>28–35 分钟：</b>把观察结果映射回 <code>{lesson.flow.join(" → ")}</code>，标出第一次发生分歧的位置。</li>
               </ol>
             </div>
-            <div className="self-check">
-              <small>SELF CHECK</small>
-              <h3>点开答案前，先用自己的话说</h3>
-              <details><summary>Q1：这一层为什么存在？</summary><p>{lesson.why}</p></details>
-              <details><summary>Q2：输入和输出分别是什么？</summary><p>输入从 <code>{lesson.flow[0]}</code> 进入，经过中间职责节点，最终抵达 <code>{lesson.flow.at(-1)}</code>。</p></details>
-              <details><summary>Q3：整体架构里由谁拥有它？</summary><p>{detail.architecture}</p></details>
+            <div className="lab-deliverable">
+              <small>ACCEPTANCE CRITERIA</small>
+              <h3>交付物，而不是读后感</h3>
+              <p>{study.deliverable}</p>
+              <ul>
+                <li><span>□</span> 能指出状态真正的拥有者</li>
+                <li><span>□</span> 能指出第一个真实副作用发生点</li>
+                <li><span>□</span> 能说清一个可替换边界及替换代价</li>
+                <li><span>□</span> 能用两个源码锚点反证自己的结论</li>
+              </ul>
             </div>
           </div>
         </div>
       </section>
+      <section id="review">
+        <div className="section-number">11</div>
+        <div className="section-wide">
+          <h2>架构评审题：能答到什么深度，才算真的会了</h2>
+          <div className="review-questions">
+            {study.reviewQuestions.map((item, index) => (
+              <details key={item.question}>
+                <summary><span>Q{index + 1}</span><strong>{item.question}</strong><i>展开参考答案 ＋</i></summary>
+                <p>{item.answer}</p>
+              </details>
+            ))}
+            <details>
+              <summary><span>Q4</span><strong>本课结论在源码中由哪两个位置共同支持？</strong><i>展开参考答案 ＋</i></summary>
+              <p><code>{detail.evidence[0].file}</code> 的 <code>{detail.evidence[0].symbol}</code> 给出第一侧边界；<code>{detail.evidence[1].file}</code> 的 <code>{detail.evidence[1].symbol}</code> 给出组装、消费或生命周期的另一侧。只引用其中一个还不足以证明完整调用关系。</p>
+            </details>
+          </div>
+        </div>
+      </section>
       <section id="takeaway">
-        <div className="section-number">09</div>
+        <div className="section-number">12</div>
         <div className="section-wide"><h2>一句话带走</h2><div className="takeaway">{lesson.takeaway}</div></div>
       </section>
     </article>
@@ -1612,8 +1864,11 @@ function FlowDiagram({ steps, color }: { steps: string[]; color: string }) {
   const [playing, setPlaying] = useState(false);
 
   useEffect(() => {
-    setActiveStep(0);
-    setPlaying(!window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    const frame = window.requestAnimationFrame(() => {
+      setActiveStep(0);
+      setPlaying(!window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [stepKey]);
 
   useEffect(() => {
