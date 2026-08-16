@@ -13,10 +13,10 @@ test("keeps all five architecture routes and forty lessons", () => {
   assert.equal(lessonIds.length, 40);
 });
 
-test("gives every lesson two real source anchors", () => {
-  const evidenceAnchors = page.match(/\{\s*file:\s*"[^"]+",\s*symbol:\s*"[^"]+",\s*note:/g) ?? [];
-  assert.equal(evidenceAnchors.length, 80);
-  assert.match(page, /用两个锚点证明一个结论/);
+test("gives every lesson at least two real source anchors", () => {
+  const evidenceAnchors = page.match(/\{\s*file:\s*"[^"]+",\s*symbol:\s*"[^"]+",[^}]*?note:/g) ?? [];
+  assert.ok(evidenceAnchors.length >= 80, `expected at least 80 evidence anchors, found ${evidenceAnchors.length}`);
+  assert.match(page, /固定提交、精确到行/);
 });
 
 test("teaches from an Agent architecture learner perspective", () => {
