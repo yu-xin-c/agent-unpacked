@@ -13,10 +13,21 @@ test("keeps all five architecture routes and forty lessons", () => {
   assert.equal(lessonIds.length, 40);
 });
 
-test("gives every lesson at least two real source anchors", () => {
+test("gives every lesson at least four real source anchors", () => {
   const evidenceAnchors = page.match(/\{\s*file:\s*"[^"]+",\s*symbol:\s*"[^"]+",[^}]*?note:/g) ?? [];
-  assert.ok(evidenceAnchors.length >= 80, `expected at least 80 evidence anchors, found ${evidenceAnchors.length}`);
+  assert.ok(evidenceAnchors.length >= 160, `expected at least 160 evidence anchors, found ${evidenceAnchors.length}`);
   assert.match(page, /固定提交、精确到行/);
+});
+
+test("gives all forty lessons their own failure drill and review question", () => {
+  const drillBlock = page.match(/const lessonDrills:[\s\S]+?\n};\n\nconst systemDesignGems/);
+  assert.ok(drillBlock, "lessonDrills block is missing");
+  const drillIds = drillBlock[0].match(/^\s{2}[NDPCO]\d{2}: \{/gm) ?? [];
+  assert.equal(drillIds.length, 40);
+  for (const field of ["drill.failureTrigger", "drill.failureSymptom", "drill.debugPath", "drill.experiment", "drill.deliverable", "drill.reviewQuestion"]) {
+    assert.match(page, new RegExp(field.replace(".", "\\.")));
+  }
+  assert.doesNotMatch(page, /它约束这一层只拥有自己的状态和转换/);
 });
 
 test("teaches from an Agent architecture learner perspective", () => {

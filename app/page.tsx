@@ -54,12 +54,16 @@ type CourseOverviewData = {
 
 type ProjectStudyGuide = {
   lenses: Array<{ title: string; question: string }>;
+};
+
+type LessonDrill = {
   failureTrigger: string;
   failureSymptom: string;
   debugPath: string;
   experiment: string;
   deliverable: string;
-  reviewQuestions: Array<{ question: string; answer: string }>;
+  reviewQuestion: string;
+  reviewAnswer: string;
 };
 
 type SignatureDesign = {
@@ -384,7 +388,7 @@ const piLessons: Lesson[] = [
     title: "Tool Batch：一把顺序锁约束整批调用",
     kicker: "Batch Mode / Ordered Artifacts",
     motto: "只要批次中任一工具声明 sequential，整批就串行；并行模式也先按顺序预检，完成事件可乱序，结果消息必须回到模型原顺序。",
-    why: "混合读写工具时，逐工具并发看似灵活，却会让写操作被前后读操作越过。PI 选择更保守的批次语义：任一工具要求顺序，整批统一降级。",
+    why: "混合读写工具时，逐工具并发看似灵活，却会让写操作被前后读操作越过；如果再按完成顺序回填结果，同一组模型输出还会生成不同的下一轮上下文。PI 选择更保守的批次语义：任一工具要求顺序，整批统一降级；并行批次只放开执行阶段，预检和结果 artifact 仍保持模型源顺序。",
     model: "一列货车里只要有一节危险品，整列都走专用慢线；普通列车可并行卸货，但最终提货单仍按车厢编号排列。",
     flow: ["Tool Calls", "Validate", "beforeToolCall", "Parallel / Sequential", "afterToolCall", "Ordered Results"],
     files: ["packages/agent/src/agent-loop.ts", "packages/agent/src/types.ts"],
@@ -414,7 +418,7 @@ const piLessons: Lesson[] = [
     title: "JSONL Tree：追加文件、活动叶子与压缩投影",
     kicker: "parentId / Leaf / Context View",
     motto: "每个条目追随当前 leaf，branch() 只移动指针；buildContextEntries() 再从活动路径选择最新压缩摘要与保留后缀。",
-    why: "一份 JSONL 既要保留所有分支，又要只给模型发送当前路径，并在长对话里跳过已摘要前缀。简单按文件行顺序读取无法同时满足三者。",
+    why: "一份 JSONL 既要保留所有分支，又要只给模型发送当前路径，并在长对话里跳过已摘要前缀。简单按文件行顺序读取无法同时满足三者，还会把用户已经切走的旧分支重新喂给模型。PI 因此把追加存储、活动 leaf 与模型上下文投影拆成三个独立动作。",
     model: "像 Git 对象库：文件里保存所有 commit，HEAD 选择当前链；压缩摘要像一张新的基线快照，只改变 checkout 视图，不删除旧对象。",
     flow: ["append entry", "parentId = leaf", "move leaf", "walk to root", "latest compaction", "project context"],
     files: ["packages/coding-agent/src/core/session-manager.ts", "packages/coding-agent/src/core/messages.ts"],
@@ -659,7 +663,7 @@ const lessonDetails: Record<string, LessonDetail> = {
       { file: "src/query.ts", symbol: "model-view projection pipeline", lineStart: 523, lineEnd: 733, kind: "代码事实", note: "发送前依次执行 boundary projection、raw result 脱附、预算、snip、microcompact、collapse 与 autocompact；多处强调不原地改 UI 的 mutableMessages。" },
       { file: "src/query.ts", symbol: "stream fallback reset", lineStart: 899, lineEnd: 980, kind: "代码事实", note: "流式降级会 tombstone 已输出的孤儿 assistant，清空 tool blocks/results，并 discard 旧 StreamingToolExecutor，防止旧 tool_use_id 的结果泄漏。" },
       { file: "src/query.ts", symbol: "overflow recovery transitions", lineStart: 1349, lineEnd: 1538, kind: "代码事实", note: "413 先尝试 collapse_drain_retry，再 reactive_compact_retry；max output 先原请求升限，再注入 continuation，且 guard 防止重复死循环。" },
-      { file: "src/query.ts", symbol: "next-turn commit", lineStart: 1990, lineEnd: 2059, kind: "代码事实", note: "工具后可刷新 MCP tools，检查 maxTurns，再一次性构造 reason=next_turn 的完整 State。" },
+      { file: "src/query.ts", symbol: "next-turn commit", lineStart: 1990, lineEnd: 2058, kind: "代码事实", note: "工具后可刷新 MCP tools，检查 maxTurns，再一次性构造 reason=next_turn 的完整 State。" },
     ],
     trace: [
       { name: "project model view", input: "完整 messages 与 token/runtime 状态", responsibility: "以固定次序删除或摘要模型不该再看的内容，不破坏产品消息真源。", output: "messagesForQuery", anchor: "query.ts · L523" },
@@ -774,8 +778,8 @@ const lessonDetails: Record<string, LessonDetail> = {
       { file: "packages/agent-core/src/agent-loop.ts", symbol: "next-turn and follow-up checkpoints", lineStart: 458, lineEnd: 519, kind: "代码事实", note: "prepareNextTurn 可原子替换 context/model/reasoning；steering 在 stop 判断前再次检查，follow-up 只在内层循环结束后进入。" },
     ],
     trace: [
-      { name: "Agent.prompt", input: "用户消息", responsibility: "建立 activeRun，快照 state 并启动事件驱动 loop。", output: "agent_start / turn_start", anchor: "agent.ts · L398" },
-      { name: "streamAssistantResponse", input: "当前上下文", responsibility: "把增量流归约成带 stopReason 的正式 assistant message。", output: "AssistantMessage", anchor: "agent-loop.ts · L526" },
+      { name: "Agent.prompt", input: "新的用户消息或排队输入", responsibility: "建立 activeRun，快照 state 并启动事件驱动 loop。", output: "agent_start / turn_start", anchor: "agent.ts · L398" },
+      { name: "streamAssistantResponse", input: "当前模型上下文与可见工具", responsibility: "把增量流归约成带 stopReason 的正式 assistant message。", output: "AssistantMessage", anchor: "agent-loop.ts · L526" },
       { name: "executeToolCalls", input: "完整 toolUse turn", responsibility: "选择 sequential/parallel，处理 steering skip 和工具生命周期。", output: "保序 ToolResultMessage[]", anchor: "agent-loop.ts · L629" },
       { name: "outer checkpoint", input: "本轮结果与两只消息队列", responsibility: "决定继续工具轮、注入 steering、启动 follow-up 或结束。", output: "下一 turn 或 agent_end", anchor: "agent-loop.ts · L458" },
     ],
@@ -863,7 +867,7 @@ const lessonDetails: Record<string, LessonDetail> = {
       { name: "surface policy", input: "profile/provider/agent/group/sender policy", responsibility: "逐层过滤模型可见目录并记录 exclusion provenance。", output: "visible tools", anchor: "tool-policy-pipeline.ts · L134" },
       { name: "call policy", input: "模型生成的 tool name 与 raw args", responsibility: "执行 loop detection、可信策略、审批和插件 Hook。", output: "blocked outcome 或 adjusted params", anchor: "before-tool-call.policy.ts · L90" },
       { name: "finalizer", input: "Hook/approval 后参数", responsibility: "工具自有 finalize、schema validate、steering/voice 最终闸门。", output: "validated execution params", anchor: "before-tool-call.wrapper.ts · L448" },
-      { name: "implementation", input: "最终参数", responsibility: "越过副作用边界，记录 outcome、diagnostics 与 terminal presentation。", output: "AgentToolResult", anchor: "before-tool-call.wrapper.ts · L494" },
+      { name: "implementation", input: "完成最终校验与审批的工具参数", responsibility: "越过副作用边界，记录 outcome、diagnostics 与 terminal presentation。", output: "AgentToolResult", anchor: "before-tool-call.wrapper.ts · L494" },
     ],
   },
   O08: {
@@ -955,7 +959,7 @@ const lessonDetails: Record<string, LessonDetail> = {
     ],
     trace: [
       { name: "ToolLoader", input: "内置 Python package 与第三方 entry points", responsibility: "按 scope/enabled/create 约定实例化工具并处理冲突。", output: "ToolRegistry entries", anchor: "loader.py · L36" },
-      { name: "get_definitions", input: "注册工具", responsibility: "提供稳定排序的 schema，内置前缀在前、MCP 后缀在后，利于 prompt cache。", output: "provider tools schema", anchor: "registry.py · L86" },
+      { name: "get_definitions", input: "ToolRegistry 当前注册的全部工具", responsibility: "提供稳定排序的 schema，内置前缀在前、MCP 后缀在后，利于 prompt cache。", output: "provider tools schema", anchor: "registry.py · L86" },
       { name: "prepare_call", input: "模型工具名与 arguments", responsibility: "精确查找、解包、cast、validate，在副作用前产生稳定错误。", output: "Tool + typed params", anchor: "registry.py · L110" },
       { name: "batch executor", input: "保序 ToolCallRequest 列表", responsibility: "按 concurrency_safe 隔离并发区间，收集错误并保序回填。", output: "tool result messages", anchor: "runner.py · L1359" },
     ],
@@ -1005,16 +1009,17 @@ const lessonDetails: Record<string, LessonDetail> = {
       { name: "construct", input: "Config 与 workspace", responsibility: "建立共享状态和所有权关系，避免 registry/session 各自复制。", output: "AgentLoop + ChannelManager + infrastructure", anchor: "gateway_runtime.py · L350" },
       { name: "connect", input: "MCP config 与共享 registry", responsibility: "在 Agent 消费消息前建立外部工具连接。", output: "已注册 MCP tools", anchor: "gateway_runtime.py · L860" },
       { name: "long-lived gather", input: "watcher/agent/channels/triggers/health tasks", responsibility: "并行运行直到任一关键任务结束或收到 shutdown。", output: "runtime task group", anchor: "gateway_runtime.py · L867" },
-      { name: "outbound dispatcher", input: "统一 OutboundMessage events", responsibility: "应用渠道能力策略并可靠投递。", output: "外部平台消息/流更新", anchor: "manager.py · L683" },
+      { name: "outbound dispatcher", input: "统一 OutboundMessage events", responsibility: "应用渠道能力策略、流式合并、去重与失败重试后可靠投递。", output: "外部平台消息/流更新", anchor: "manager.py · L683" },
       { name: "shutdown", input: "signal、task failure 或退出", responsibility: "先取消任务，再关闭 Agent/MCP/Channels 并 durable flush sessions。", output: "确定性释放的进程", anchor: "gateway_runtime.py · L923" },
     ],
   },
   D01: {
     architecture: "Registry.plugin() 为每次 ctx.plugin() 调用创建独立 Fiber。Reflect.provide() 不是直接把服务写进全局对象，而是委托当前 Fiber.effect() 安装并返回注销器；Fiber 统一收集 disposer，卸载时逆序执行。插件树、服务所有权和副作用回收因此是同一套机制，而不是三个约定。",
     evidence: [
-      { file: "vendor/cordis/src/registry.ts", symbol: "Registry.plugin", lineStart: 316, lineEnd: 356, kind: "代码事实", note: "每次插件挂载都会创建自己的 Fiber，并把 config 与启动栈交给该节点；它不是复用一个全局插件实例。" },
+      { file: "vendor/cordis/src/registry.ts", symbol: "Registry.plugin", lineStart: 316, lineEnd: 336, kind: "代码事实", note: "每次插件挂载都会创建自己的 Fiber，并把 config 与启动栈交给该节点；它不是复用一个全局插件实例。" },
       { file: "vendor/cordis/src/reflect.ts", symbol: "ReflectService.provide", lineStart: 277, lineEnd: 304, kind: "代码事实", note: "provide() 直接落在 this.ctx.fiber.effect() 上，安装服务的同时定义撤销路径，证明服务注册受当前插件所有。" },
       { file: "vendor/cordis/src/fiber.ts", symbol: "Fiber.effect", lineStart: 418, lineEnd: 488, kind: "代码事实", note: "effect 归一化同步、异步与生成器清理器，保证 disposer 幂等，并按栈式顺序完成回收。" },
+      { file: "vendor/cordis/src/events.ts", symbol: "Events.register", lineStart: 245, lineEnd: 263, kind: "代码事实", note: "事件监听器同样通过当前 fiber.effect 注册，返回的 disposer 删除精确 callback；监听与服务因此服从同一所有权和逆序清理协议。" },
     ],
     trace: [
       { name: "ctx.plugin()", input: "插件对象、配置和当前 Context", responsibility: "把一次安装请求交给 Registry；同一插件可以在不同 Context 中拥有不同实例。", output: "一次新的插件挂载请求", anchor: "registry.ts · plugin()" },
@@ -1028,8 +1033,9 @@ const lessonDetails: Record<string, LessonDetail> = {
     architecture: "loadProfile() 先解析 profile template 中有序的 bundle manifest 与各自 cordis.patch.yml，再加入用户层；composeEntries() 对 layers.flat() 只调用一次 applyEntryPatches。boot() 直到最终 entries 就绪才创建 Context 与 Loader，挂载失败则 dispose 半成品 Context。这里最重要的边界是：组合属于启动前的纯配置阶段，插件激活属于之后的生命周期阶段。",
     evidence: [
       { file: "packages/boot/app-boot/src/profile.ts", symbol: "PROFILE_TEMPLATES / loadProfile", lineStart: 114, lineEnd: 126, kind: "代码事实", note: "web 与 headless 都以 base 为第一层，只在第二层选择自己的 surface bundle，产品差异从模板层就已显式。" },
-      { file: "packages/boot/app-boot/src/profile.ts", symbol: "loadProfile / composeEntries", lineStart: 371, lineEnd: 430, kind: "代码事实", note: "有序收集 bundle patches 后展平，composeEntries 以一次 applyEntryPatches 合成最终配置，避免逐层启动、逐层修改。" },
-      { file: "packages/boot/app-boot/src/index.ts", symbol: "boot", lineStart: 757, lineEnd: 850, kind: "代码事实", note: "最终配置完成后才创建 Context、提供 dshHomePath 并挂载 Loader；异常分支销毁部分启动的上下文。" },
+      { file: "packages/boot/app-boot/src/profile.ts", symbol: "loadProfile / composeEntries", lineStart: 371, lineEnd: 420, kind: "代码事实", note: "有序收集 bundle patches 后展平，composeEntries 以一次 applyEntryPatches 合成最终配置，避免逐层启动、逐层修改。" },
+      { file: "packages/boot/app-boot/src/index.ts", symbol: "boot", lineStart: 757, lineEnd: 802, kind: "代码事实", note: "最终配置完成后才创建 Context、提供 dshHomePath 并挂载 Loader；异常分支销毁部分启动的上下文。" },
+      { file: "packages/boot/app-boot/tests/user-patches.spec.ts", symbol: "id-targeted override and insert", lineStart: 270, lineEnd: 294, kind: "测试证据", note: "真实 boot 测试同时覆盖稳定 id 覆盖、insert 与 !!js 环境插值，并在最终挂载树中断言结果，证明用户层确实进入同一次组合。" },
     ],
     trace: [
       { name: "loadProfile()", input: "profile 名、home patch 与 CLI patch", responsibility: "解析模板并保留每一层的来源与顺序。", output: "尚未启动的 patch layer 列表", anchor: "profile.ts · L371" },
@@ -1044,7 +1050,8 @@ const lessonDetails: Record<string, LessonDetail> = {
     evidence: [
       { file: "packages/core/session/src/index.ts", symbol: "Session.append", lineStart: 604, lineEnd: 724, kind: "代码事实", note: "校验在 log mutation 之前完成；成功事件以 log.length 获得 seq，事件与数据被冻结，失败不会留下半条记录。" },
       { file: "packages/core/session/src/index.ts", symbol: "Session.deriveMessages", lineStart: 726, lineEnd: 805, kind: "代码事实", note: "模型消息从 surface 投影生成并缓存；replaceGeneration 改变时才重建，说明 messages 是派生视图。" },
-      { file: "packages/core/session/src/index.ts", symbol: "Session.fork", lineStart: 1081, lineEnd: 1165, kind: "代码事实", note: "fork 复制稳定事件前缀并检查 turn 边界，防止子会话从一半工具链或一半 turn 开始。" },
+      { file: "packages/core/session/src/index.ts", symbol: "Session.fork", lineStart: 1081, lineEnd: 1153, kind: "代码事实", note: "fork 复制稳定事件前缀并检查 turn 边界，防止子会话从一半工具链或一半 turn 开始。" },
+      { file: "packages/core/session/tests/fork.spec.ts", symbol: "fork stable prefix tests", lineStart: 79, lineEnd: 135, kind: "测试证据", note: "测试验证子会话得到深度冻结的独立前缀、保留 closed turn 后的 log-only 事件，并能在父会话开放新 turn 时从更早稳定边界分叉。" },
     ],
     trace: [
       { name: "validate event", input: "待追加 SessionEvent 与 surface metadata", responsibility: "验证 JSON 可无损持久化、事件形状和 surface 操作合法性；此时尚未修改日志。", output: "可提交事件或明确异常", anchor: "Session.append · L604" },
@@ -1097,7 +1104,7 @@ const lessonDetails: Record<string, LessonDetail> = {
     trace: [
       { name: "createScope()", input: "父 Context、不透明 ScopeKey 与可选父 scope", responsibility: "创建 Cordis 子 Fiber，并建立运行时可查询的 scope 身份。", output: "拥有自己 Context 的 Scope", anchor: "scope/index.ts · L137" },
       { name: "parent chain", input: "当前 scope key", responsibility: "沿父引用收集祖先；没有 scope 时回到 root layer。", output: "从当前节点到根的身份链", anchor: "ScopedLayers.parent" },
-      { name: "chainLayers()", input: "身份链", responsibility: "反转为祖先优先顺序，使局部层可以在最后确定性覆盖。", output: "farthest → exact 的 layer 序列", anchor: "store.ts · L192" },
+      { name: "chainLayers()", input: "当前 scope 到根 scope 的父子身份链", responsibility: "反转为祖先优先顺序，使局部层可以在最后确定性覆盖。", output: "farthest → exact 的 layer 序列", anchor: "store.ts · L192" },
       { name: "local shadow", input: "继承可见表与当前层同名 definition/restriction", responsibility: "仅在当前 scope 子树替换默认能力，不改动全局注册。", output: "agent 专属 ToolView", anchor: "ToolRuntime.view · L1152" },
       { name: "scope dispose", input: "scope Fiber 上的所有 scoped effects", responsibility: "撤销局部注册并让后续查询自然回落到继承实现。", output: "恢复父层视图的子树", anchor: "ScopedLayers.effect · L226" },
     ],
@@ -1108,6 +1115,7 @@ const lessonDetails: Record<string, LessonDetail> = {
       { file: "packages/compaction/compaction-basic/src/index.ts", symbol: "agent/pre-step / agent/request-error hooks", lineStart: 147, lineEnd: 205, kind: "代码事实", note: "正常压力治理和溢出恢复是两个事件入口；压缩保持插件身份，没有侵入 ReactLoopAgent.step()。" },
       { file: "packages/compaction/compaction-basic/src/region.ts", symbol: "compactSurfaceRegion", lineStart: 152, lineEnd: 230, kind: "代码事实", note: "函数先验证候选区间、追加 start、调用 summarizer，并把真正提交收束到单独的 commit body。" },
       { file: "packages/compaction/compaction-basic/src/region.ts", symbol: "commitCompactionBody", lineStart: 427, lineEnd: 535, kind: "代码事实", note: "提交前重验 surface 稳定性与摘要收益，再用 replace 事件切换可见表面；任何校验失败都不会改写旧事件。" },
+      { file: "packages/compaction/compaction-basic/tests/compaction-basic.spec.ts", symbol: "summarizer failure preserves surface", lineStart: 996, lineEnd: 1010, kind: "测试证据", note: "失败测试明确比较压缩前后的 surface 完全相等，同时要求 durable compaction/end 记录错误，证明失败留下审计事实但不提交可见替换。" },
     ],
     trace: [
       { name: "select region", input: "当前 surface、token 压力与保留策略", responsibility: "只选择平衡且稳定的前缀；工具调用与结果必须成对留在同一区间。", output: "带 start/end 与源 seq 的候选 region", anchor: "compactSurfaceRegion · validation" },
@@ -1123,8 +1131,8 @@ const lessonDetails: Record<string, LessonDetail> = {
     evidence: [
       { file: "packages/boot/app-boot/src/profile.ts", symbol: "PROFILE_TEMPLATES", lineStart: 114, lineEnd: 126, kind: "代码事实", note: "两个模板都继承同一个 base，表面 bundle 是唯一分叉点，直接反证“两套 Agent 内核”的理解。" },
       { file: "packages/bundle/web-app/cordis.patch.yml", symbol: "web-app composition patch", lineStart: 1, lineEnd: 120, kind: "代码事实", note: "Web 层装入 Host、server/client 与 UI 功能；这些条目是 base 之后的附加层，并未重新定义 Session 或 AgentLoop。" },
-      { file: "packages/bundle/headless/cordis.patch.yml", symbol: "headless composition patch", lineStart: 1, lineEnd: 80, kind: "代码事实", note: "Headless 只保留 code runtime、startup 与 runner 相关条目，没有浏览器服务和 HTTP 宿主。" },
-      { file: "packages/bundle/headless/src/startup.ts", symbol: "apply", lineStart: 49, lineEnd: 86, kind: "代码事实", note: "启动插件把 task/options 提供为普通 Cordis service，runner 通过依赖消费；一次性入口没有绕开插件生命周期。" },
+      { file: "packages/bundle/headless/cordis.patch.yml", symbol: "headless composition patch", lineStart: 1, lineEnd: 36, kind: "代码事实", note: "Headless 只保留 code runtime、startup 与 runner 相关条目，没有浏览器服务和 HTTP 宿主。" },
+      { file: "packages/bundle/headless/src/startup.ts", symbol: "apply", lineStart: 49, lineEnd: 57, kind: "代码事实", note: "启动插件把 task/options 提供为普通 Cordis service，runner 通过依赖消费；一次性入口没有绕开插件生命周期。" },
     ],
     trace: [
       { name: "profile template", input: "web 或 headless 名称", responsibility: "选择共同 base 与唯一 surface bundle，不选择另一套执行内核。", output: "有序 bundle 名单", anchor: "PROFILE_TEMPLATES · L114" },
@@ -1876,32 +1884,12 @@ const projectStudyGuides: Record<ProjectKey, ProjectStudyGuide> = {
       { title: "投影", question: "事实以什么事件保存，又被谁投影成 UI 或模型消息？" },
       { title: "组合顺序", question: "Profile、Bundle、patch 或 provider 的先后次序会改变什么？" },
     ],
-    failureTrigger: "撤掉一个 provider、调换两个插件的启动顺序，或让 effect 没有随 scope 回收。",
-    failureSymptom: "消费者仍然存在，但依赖服务为空、事件重复触发，或者旧插件留下的监听器继续影响新会话。",
-    debugPath: "先打印最终配置树，再沿 ctx 的 provide / on / effect 查注册位置，最后核对 dispose 是否与安装发生在同一 scope。",
-    experiment: "复制当前 profile，只替换本课涉及的一个 provider 或 patch 节点；保持消费者代码不变，对照运行前后的事件轨迹。",
-    deliverable: "一张“插件 → 提供服务 → 消费者 → 清理动作”的四列表，以及一次替换前后的事件差异。",
-    reviewQuestions: [
-      { question: "为什么 DSH 不把 Agent Loop 设为不可替换的核心？", answer: "因为 Loop 也只是消费 Session、LLM 与 Tools 的一种策略。把它放进插件树，产品可以替换轮次语义而不推翻其他能力。" },
-      { question: "如何判断一个插件边界设计得好不好？", answer: "看它是否只通过 ctx 暴露服务和事件、是否拥有明确 scope，以及卸载后能否撤回全部副作用。" },
-      { question: "事件溯源在这里解决的不是哪类问题？", answer: "它不负责替你选择业务策略；它解决事实记录、回放、分支和多视图一致性，策略仍由插件决定。" },
-    ],
   },
   pi: {
     lenses: [
       { title: "成熟度", question: "这个符号只是被 export，还是当前 Coding Agent 真有调用方？未实现分支在哪里？" },
       { title: "屏障", question: "事件发出后，循环会 await 哪些状态归约、扩展与持久化动作？" },
       { title: "投影", question: "Provider、AgentMessage 和 JSONL tree 分别在哪一步变成本轮模型视图？" },
-    ],
-    failureTrigger: "让一个 Agent listener 延迟完成、在并行工具批次加入 sequential 工具，或 reload 后继续调用旧 extension ctx。",
-    failureSymptom: "waitForIdle 会等待 listener；整批工具会降级为串行；旧 ctx 会抛出稳定 stale-context 错误，而不是继续修改新会话。",
-    debugPath: "先从 sdk.ts 确认真实 runtime，再沿 runLoop → processEvents → AgentSession._handleAgentEvent 记录 await 边界，最后从 leaf 向 parentId 重建模型路径。",
-    experiment: "注册一个延迟 300ms 的 message_end listener，再排入 steering/follow-up 并放入两个测试工具；记录 end event、result artifact、JSONL append 与 idle 的准确顺序。",
-    deliverable: "一条带毫秒时间戳的提交时间线、一棵含分支与 compaction 的活动路径，以及 reload 前后 ctx 可用性对照。",
-    reviewQuestions: [
-      { question: "如何证明 AgentHarness 不是当前产品主路径？", answer: "正证据是 sdk.ts 构造 Agent + AgentSession；反证据是 AgentHarness.prompt/steer/resume/watch 仍统一调用 unavailable()。只看 export 不足以证明运行。" },
-      { question: "并行工具的事件顺序和结果顺序为什么不同？", answer: "tool_execution_end 在实际完成时发出，便于实时 UI；Promise.all 保留输入顺序，随后 ToolResultMessage 按模型调用顺序提交，保证下一轮上下文稳定。" },
-      { question: "Extension reload 为什么要让旧 ctx 报错？", answer: "旧 ctx 捕获了旧 runtime、订阅和会话引用。主动失效能把跨代误用变成可定位错误，避免幽灵插件悄悄影响新会话。" },
     ],
   },
   nanobot: {
@@ -1910,32 +1898,12 @@ const projectStudyGuides: Record<ProjectKey, ProjectStudyGuide> = {
       { title: "三重投影", question: "Session replay、ContextBuilder assembly 与 ContextGovernor model copy 各自允许改变什么？" },
       { title: "资源所有权", question: "MCP、Channel、Cron、Dream、AgentLoop 和 Session flush 分别由谁创建、连接与关闭？" },
     ],
-    failureTrigger: "在工具完成前取消 turn、让两个同 session follow-up 与一个跨 session 请求同时到达，再让 consolidation provider 失败一次、Dream 工具失败一次。",
-    failureSymptom: "取消的部分工具上下文应由 checkpoint 恢复；同 session 不应并发提交，跨 session 可并行；consolidation 应 raw archive；失败 Dream 不应推进 cursor。",
-    debugPath: "从 effective session key 和 pending queue 开始，记录七个 stage；进入 Runner 后标出 awaiting_tools/tools_completed checkpoint；保存后核对 JSONL、last_consolidated、history cursor 与 outbound event。",
-    experiment: "用 FakeProvider 返回两个只读工具和一个写工具，给每个工具不同延迟；运行中注入 follow-up 并取消。随后触发 token consolidation 和 Dream，逐项检查顺序、恢复与游标。",
-    deliverable: "一条带时间戳的 Turn 提交表、工具 batch 甘特图、Session/history/Dream 三游标状态表，以及 Gateway 资源所有权清单。",
-    reviewQuestions: [
-      { question: "为什么不能只看 MessageBus 理解并发？", answer: "Bus 只有两只 Queue。session lock、全局 semaphore、active pending queue、命令旁路和 leftover re-publish 都在 AgentLoop，那里才定义产品顺序。" },
-      { question: "last_consolidated 为什么不是删除边界？", answer: "源码明确把它当 archive progress。get_history 仍会向前保留近期原始合法后缀；摘要进入 history 与 session metadata，原 Session.messages 不被主压缩路径覆盖。" },
-      { question: "Dream 与普通 consolidation 的本质区别是什么？", answer: "Consolidation 生成 history entry 以节省上下文；Dream 是受限文件编辑 run，会修改 SOUL/USER/MEMORY/skills，并以成功 cursor 和 Git diff 形成事务与审计。" },
-    ],
   },
   claude: {
     lenses: [
       { title: "当前路径", question: "这个类是当前 REPL、ACP、SDK 哪一条路径的真实调用者，还是只写在注释/未来计划里？" },
       { title: "顺序语义", question: "事件何时可见、共享 context 何时提交、JSONL 何时 ack，这三种顺序是否被混为一谈？" },
       { title: "往返一致性", question: "一次 snip/compact/collapse 在内存里成功后，退出再 resume 是否重建同一条合法工具链？" },
-    ],
-    failureTrigger: "让两个并发工具以相反顺序完成并都返回 contextModifier；随后触发 compact，保留最近一段 tool_use/tool_result，退出进程后 resume。",
-    failureSymptom: "UI 可按完成时间先后显示，但最终 context 必须按 tool_use 源顺序一致；恢复链必须同时包含 boundary/summary、完整 kept suffix 和所有并行 tool results。",
-    debugPath: "先标记 REPL 与 QueryEngine 两个入口；进入 queryLoop 后记录每次 transition；工具阶段区分 yield order 和 modifier commit order；最后对比 compact 前内存链、JSONL parentUuid 与 resume 链。",
-    experiment: "做两个只读测试 Tool：A 延迟 200ms、B 延迟 20ms，各追加一个 context 标记。确认 B 先显示但上下文提交为 A→B；再触发 compact 并重启，运行 checkResumeConsistency。",
-    deliverable: "一张双产品壳调用图、一条 transition 时间线、一张工具可见/提交双顺序表，以及 compact write→load UUID 端点图。",
-    reviewQuestions: [
-      { question: "如何证明 REPL 当前没有使用 QueryEngine？", answer: "正证据是 REPL.tsx 直接 import 并调用 query()；QueryEngine 的注释明确写 headless/SDK 且 REPL 是 future phase；ACP 才有真实 new QueryEngine 调用点。" },
-      { question: "为什么并发工具不能按完成顺序提交 contextModifier？", answer: "完成顺序受 I/O 抖动影响。按完成顺序提交会让同一模型输出产生不同共享状态；源码允许消息先显示，但按原 block 顺序应用 modifier。" },
-      { question: "compact 为什么不能只写 summary 再保留最后 N 条？", answer: "保留消息已带旧 parentUuid 且 UUID 去重不会重写。必须记录 head/anchor/tail 并在读侧 relink；并行 tool_use 的 DAG 还需要补回 sibling 与 tool_result。" },
     ],
   },
   openclaw: {
@@ -1944,16 +1912,373 @@ const projectStudyGuides: Record<ProjectKey, ProjectStudyGuide> = {
       { title: "提交边界", question: "入站记录、模型终态、工具副作用和渠道发送分别在何时成为不可重做的事实？" },
       { title: "代际与租约", question: "reload 窗口内，新请求等待什么 gate，旧请求释放什么 owner，失败是否留下半套可见状态？" },
     ],
-    failureTrigger: "让同一平台账号下的两个 peer 走不同 binding/dmScope；运行 A 持有旧 runtime 时触发 config+auth reload，再让运行 B 入场；最后模拟渠道 send 已接受但 finalization 抛错。",
-    failureSymptom: "A 必须全程使用旧 snapshot，B 只能等待并读取完整新 snapshot；两个 peer 的 matchedBy/sessionKey 可解释；已被平台接受的 reply 不能因早期 dispatch error 被重复发送。",
-    debugPath: "按 admission → matchedBy/agentId/dmScope/sessionKey → harnessId → runtime owner/generation/leaseCount → attempt/retryKind → delivery receipt/finalization 记录一条 trace。",
-    experiment: "写一个只读诊断脚本：打印两个 route；在 acquire 后卡住 run A，触发 refresh，再启动 B；最后给 fake delivery 返回带 finalization 的 partial result，验证 settlement precedence。",
-    deliverable: "一张事实所有权矩阵、两条新旧 generation 时间线、一张 tool surface/call 双门权限图，以及一次 partial delivery 的重试判定记录。",
-    reviewQuestions: [
-      { question: "steering 与 follow-up 的区别如何从源码证明？", answer: "runLoop 的内层在工具轮与 stop 检查前多次读取 steering；只有内层退出后，外层才 drain follow-up。Agent 也为两者维护独立 PendingMessageQueue。" },
-      { question: "为什么 session key 不能被当成授权令牌？", answer: "它编码路由与历史隔离，能从 channel/peer/dmScope 生成；权限必须来自已验证的 transport/session metadata 与 policy，不能仅因知道一个字符串就提升权力。" },
-      { question: "显式 Harness 为什么必须 fail closed？", answer: "selection.ts 只让 auto 在无匹配时回到 built-in；显式 runtime 缺失、不支持或执行失败都抛错，因为替换执行器会改变线程、工具与安全语义。" },
-    ],
+  },
+};
+
+const lessonDrills: Record<string, LessonDrill> = {
+  D01: {
+    failureTrigger: "在同一插件里注册一个 service、一个事件监听器和两个带日志的 effect；让后注册的 effect 抛错，再 dispose 插件 Fiber。",
+    failureSymptom: "安装失败不能留下 service 或 listener；已成功安装的 effect 必须只清理一次，并按后注册先清理的顺序回滚。",
+    debugPath: "沿 Registry.plugin → new Fiber → ReflectService.provide / Events.register → Fiber.effect 的 disposer 栈，记录每个副作用归属的 Fiber id。",
+    experiment: "写一个最小 Cordis 插件，记录 install-A、install-B、dispose-B、dispose-A；分别测试正常卸载与 B 安装失败，比较最终服务表和监听器数量。",
+    deliverable: "一条精确的安装/回滚时间线，以及“副作用—所有者 Fiber—disposer—卸载后可见性”四列表。",
+    reviewQuestion: "为什么把 service 写进 Context 还不够，必须让 provide() 进入 fiber.effect()？",
+    reviewAnswer: "Context 只解决查找，不解决谁负责撤销。进入 fiber.effect 后，service 与监听器共享同一所有权树，安装失败、热重载和父 scope 销毁才能使用同一条确定性回滚路径。",
+  },
+  D02: {
+    failureTrigger: "准备 base、web bundle、用户 patch 三层，让后两层同时修改同一稳定 id，并让用户层再插入一项；随后制造一次非法 patch。",
+    failureSymptom: "合法输入只得到一棵最终树，后层按顺序覆盖前层；非法输入应在 Loader.mount 前失败，不能先启动 base 再留下半套插件。",
+    debugPath: "打印 loadProfile 返回的 layer 来源与顺序，比较 layers.flat()、composeEntries() 输出和 Loader 实际 entries，确认中间没有逐层激活。",
+    experiment: "调用 composeEntries 两次交换 bundle 顺序，保存两个配置 diff；再运行真实 boot 测试，验证稳定 id override、insert 和 !!js 值都只在最终挂载树中出现。",
+    deliverable: "一张 layer→patch→final entry 的来源表、一份顺序交换 diff，以及非法 patch 发生在副作用前的证据。",
+    reviewQuestion: "为什么 DSH 要先展平所有 patch，再只调用一次 applyEntryPatches？",
+    reviewAnswer: "逐层修改并立即启动会让覆盖顺序同时影响生命周期，失败时还要回滚已经运行的旧层。单次合成把配置顺序变成可审核的纯计算，最终树确认后才进入插件副作用阶段。",
+  },
+  D03: {
+    failureTrigger: "追加一轮 user/assistant/tool 事件，保存旧事件引用后尝试修改嵌套 content；再做 surface replace，并尝试从开放 turn 中间 fork。",
+    failureSymptom: "旧事件修改应抛 TypeError；deriveMessages 只反映新 surface，但原 log 仍含被遮蔽事件；开放 turn 边界的 fork 必须拒绝。",
+    debugPath: "依次检查 append 前校验、seq 与 deepFreeze、surface replaceGeneration、deriveMessages cache，以及 _forkSeed 对最近 turn/start/end 的判断。",
+    experiment: "构造两轮 Session：第一轮闭合、第二轮保持开放。替换第一轮模型表面后比较 events 与 deriveMessages，再分别从第一轮末尾和第二轮中间 fork。",
+    deliverable: "三份快照：durable events、surface nodes、derived messages；再附一张合法/非法 fork boundary 表。",
+    reviewQuestion: "为什么 surface replace 不能直接删除旧 SessionEvent？",
+    reviewAnswer: "删除会破坏审计、分支来源和恢复依据。DSH 让 replace 只改变模型表面，durable log 继续保存旧事实；fork 和其他投影因此仍能引用稳定的 seq 前缀。",
+  },
+  D04: {
+    failureTrigger: "在一个工具 step 运行期间依次发送 inject、steer 与 follow-up，并记录 driver 是否被唤醒、消息在哪个 step/turn 被 claim。",
+    failureSymptom: "inject 只能等当前 step 的下一个边界且不主动唤醒；steer 在下一个 step 可见并唤醒；follow-up 必须进入下一 turn。",
+    debugPath: "从 delivery method 的 wakeup 参数进入 wakeDriver，再在 turn/start、claim inputs、step end、turn-stopping 和 turn/end 上打时间戳。",
+    experiment: "用可控 promise 阻塞模型或工具，在三个时刻分别投递三种消息；输出 SessionEvent 序列，验证消息可见性与唤醒行为是两个独立维度。",
+    deliverable: "一张三种 inbox mode 的“投递时刻—唤醒—首次可见 step—所属 turn”矩阵。",
+    reviewQuestion: "为什么 inject 与 steer 都面向下一 step，却不能合并成一个 API？",
+    reviewAnswer: "两者的可见边界相同，但调度语义不同：steer 必须唤醒已经空闲或中断后的 driver，inject 只补充材料而不改变运行节奏。合并会把产品意图藏进调用时机。",
+  },
+  D05: {
+    failureTrigger: "安排 parallel A、parallel B、exclusive C、parallel D 四个工具，令完成顺序为 B→A→C→D，并让 B 的 post 阶段失败。",
+    failureSymptom: "C 必须等待 A/B 全部 settle，D 不能越过 C；Session 结果仍按 A→B→C→D 提交，未启动调用得到可审计 aborted result。",
+    debugPath: "记录 executeToolCalls 的 slots、prepareExecution 决策、rolling pool dispatch、每个 promise settle 和 ordered finalize/Session append。",
+    experiment: "用延迟和 barrier 工具复现上述批次，分别在 prepare、dispatch、post 三阶段注入错误，比较哪些调用已启动、哪些只生成规范化结果。",
+    deliverable: "一张执行甘特图、一次模型顺序提交日志，以及三类失败阶段对应的启动/回收表。",
+    reviewQuestion: "为什么 DSH 只允许 dispatch/body 并发，而 prepare 与 finalize 保持模型顺序？",
+    reviewAnswer: "prepare 包含审批和 guards，finalize 包含结果语义与 Session 提交；让它们乱序会改变因果关系。只并发真正耗时的 handler body，能保留吞吐又不牺牲可复现状态。",
+  },
+  D06: {
+    failureTrigger: "在 root 注册 toolX，在 child scope 用同名实现 shadow，再创建 grandchild；依次 dispose child 和 root，观察三层 ToolView。",
+    failureSymptom: "child/grandchild 先看到局部 toolX，root 不受影响；child dispose 后后代查询回落父实现，且局部 restrictions/listeners 一并消失。",
+    debugPath: "追 createScope 写入的 ScopeKey、parent 引用、chainLayers 的 farthest→exact 顺序、ToolRuntime.view 合并和 ScopedLayers.effect disposer。",
+    experiment: "让 root/child 的 toolX 返回不同 owner 标签，打印三层 view；再销毁 child，确认查询回落且 store 中 exact layer 被移除。",
+    deliverable: "一棵 scope 父子树、每个时刻的 toolX 解析结果，以及 dispose 前后 layer 数量对照。",
+    reviewQuestion: "为什么能力可见性与清理必须使用同一条 scope 父链？",
+    reviewAnswer: "若查找沿一套继承规则、清理沿另一套所有权规则，局部 provider 可能已经不可见却仍存活，或仍被后代使用却提前销毁。共用父链才能保证 shadow 与回落一致。",
+  },
+  D07: {
+    failureTrigger: "选择一个平衡 surface 区间开始摘要；摘要期间分别追加 log-only event、追加 surface message，并让 summarizer 抛错。",
+    failureSymptom: "log-only append 可共存；surface 改变或摘要失败都不能产生 replace，旧 surface 保持不变，但 compaction/end 必须留下错误事实。",
+    debugPath: "检查 region 初始 seq、compaction/start、summarizer 输入、commitCompactionBody 的稳定性重验、收益校验与 closing bracket。",
+    experiment: "对同一 Session 运行三次 compactRegion：正常、摘要期间 surface mutation、summarizer failure；比较 replaceGeneration、events 尾部和 derived messages。",
+    deliverable: "三条事务事件序列，以及“durable log 是否推进 / model surface 是否提交 / 是否允许重试”的结果矩阵。",
+    reviewQuestion: "为什么 compaction/start 要在调用摘要模型之前写入日志？",
+    reviewAnswer: "压缩本身可能耗时、失败或被取消。先写 start 才能区分未发生、进行中、失败关闭和遗留 orphan；但真正的 surface replace 仍要等摘要完成并重验依据后提交。",
+  },
+  D08: {
+    failureTrigger: "分别用 web 与 headless profile 组合配置，输入同一任务；对比最终 entry tree、启动服务和进入 AgentLoop 后的 SessionEvent。",
+    failureSymptom: "两者的 surface/host/task 入口不同，但 Session、LLM、tools、scope 和 AgentLoop 应来自同一 base；headless 不应偷偷启动 HTTP/browser 服务。",
+    debugPath: "从 PROFILE_TEMPLATES 到两份 cordis.patch.yml，标出 base 共同项和 surface 增量；再追 headlessStartup service 的 provider 与 runner consumer。",
+    experiment: "导出两份配置树做结构 diff，只保留不同条目；给共享 AgentLoop 加事件观察器，确认同一任务的 turn/step 协议不随 surface 改变。",
+    deliverable: "一份 web/headless 配置树差异、一张 task/UI→共享 Agent service 的收敛图。",
+    reviewQuestion: "如何从源码证明 Web 与 Headless 不是两套 Agent 内核？",
+    reviewAnswer: "PROFILE_TEMPLATES 都以 base 开头，差异只在第二个 surface bundle；headless 将 task 作为普通 Cordis service 提供，runner 仍消费 base 中的相同 Session、Tools 与 AgentLoop。",
+  },
+
+  P01: {
+    failureTrigger: "写两个最小调用：一个经 coding-agent SDK 创建 AgentSession 并 prompt，另一个经 AgentHarness.create 后调用 prompt/steer/resume。",
+    failureSymptom: "AgentSession 路径应真实运行；vNext Harness 可以建立部分持久对象，但主方法返回稳定 HarnessNotImplemented，而不是伪装成功。",
+    debugPath: "从 package export 反向追真实 new 调用点：sdk.ts 的 new Agent/new AgentSession，与 agent-harness.ts 的 unavailable() 分支分别记录。",
+    experiment: "生成“exported / constructed / callable / implemented / used by product”五列表，对 Agent、AgentSession、AgentHarness、JsonlSessionStorage 逐项填证据。",
+    deliverable: "一张当前产品路径与 vNext 施工路径的成熟度矩阵，至少包含一个正调用点和一个未实现反证。",
+    reviewQuestion: "为什么看到 public export 不能断言 AgentHarness 是 PI 当前主架构？",
+    reviewAnswer: "export 只说明 API 可见。真正的产品调用点在 sdk.ts 构造 Agent + AgentSession；Harness 多个关键方法仍统一抛 HarnessNotImplemented，因此必须区分设计目标与运行事实。",
+  },
+  P02: {
+    failureTrigger: "构造一个延迟认证和动态 import 都可能失败的 Provider，再分别让 setup、网络流和终止阶段失败。",
+    failureSymptom: "调用方始终收到 start 后的 error terminal event 与 stopReason=error 的 AssistantMessage；不应泄漏厂商异常或留下未终止流。",
+    debugPath: "沿 Models.getModel/getAuth → lazyApi/lazyStream → Provider.streamSimple → AssistantMessageEvent terminal，记录失败在哪层被协议化。",
+    experiment: "实现 FakeProvider，依次抛认证错误、import 错误和流中错误；用同一事件收集器断言每条路径的开始、增量和唯一终态。",
+    deliverable: "三类失败的事件序列表，以及 Provider/Models/API adapter 各自拥有信息的边界表。",
+    reviewQuestion: "为什么 Provider 契约同时拥有 catalog、auth 与 stream，而不是拆给三个全局 registry？",
+    reviewAnswer: "模型目录、动态凭据和协议实现共同决定一次请求是否有效。让 Provider 统一拥有它们，可避免把 A 厂商模型与 B 厂商认证或不兼容 stream adapter 错误组合。",
+  },
+  P03: {
+    failureTrigger: "在一次带工具的 turn 中排入两条 steering 和两条 follow-up，分别切换 all 与 one-at-a-time queue mode。",
+    failureSymptom: "steering 只能在完整工具批次后进入内层下一 turn；follow-up 只能在本来要结束时进入外层；queue mode 只改变每次 drain 数量。",
+    debugPath: "在 runLoop 两层 while、turn_end、prepareNextTurn、shouldStopAfterTurn、drain steering 与 drain follow-up 处记录队列长度。",
+    experiment: "用确定延迟的 FakeProvider/Tool 生成时间线，比较 all 和 one-at-a-time；确认消息归属边界相同，只是拆成不同次数的模型请求。",
+    deliverable: "一张双队列/双循环状态图，以及两种 queue mode 下的 turn 序列对照。",
+    reviewQuestion: "为什么 steering 不是硬中断？",
+    reviewAnswer: "源码只在一个完整 assistant/tool turn 后 drain steering，已经开始的工具批次先完成并提交。它表达的是“下一步改向”，不是取消当前副作用；硬中断需要另一套 abort 语义。",
+  },
+  P04: {
+    failureTrigger: "持久化 bashExecution、custom、branchSummary 与 compactionSummary 四类消息，再让 transformContext 删除一项、convertToLlm 映射其余项。",
+    failureSymptom: "Session/UI 仍保留丰富 AgentMessage；本轮 provider view 只含允许的三角色 Message，excludeFromContext 的 bash 不得泄漏。",
+    debugPath: "同时打印 persisted messages、transformContext 输出和 convertToLlm 输出，用 id 对齐每次投影而不是只看文本。",
+    experiment: "构造含四种自定义角色的会话，运行一次实际 projection；修改 transformContext 后重复，证明只改变本轮选择，不改 JSONL 原件。",
+    deliverable: "一张消息 id 从存储→应用选择→provider 协议的三列投影表。",
+    reviewQuestion: "为什么 PI 不直接把所有自定义消息转换后再存成 provider Message？",
+    reviewAnswer: "那会丢失 UI、分支摘要和扩展来源等产品语义，并把某个 Provider 的限制写回事实层。保留 AgentMessage 原件，运行时再投影，才能让存储和模型协议独立演进。",
+  },
+  P05: {
+    failureTrigger: "让两个 parallel 工具以 B→A 顺序完成，再加入一个声明 sequential 的工具；分别运行纯并行批次和混合批次。",
+    failureSymptom: "纯并行时 end event 可 B 先 A 后，但 ToolResultMessage 必须 A→B；混合批次因一个 sequential 工具整体串行。",
+    debugPath: "记录 batch mode scan、ordered prepareToolCall、Promise.all 完成时间、after hook 和第二次按数组顺序发 result 的循环。",
+    experiment: "为 A/B 设置 200ms/20ms，给每个 after hook 写入不同标记；再加入 sequential C，比较事件可见顺序、结果顺序和总耗时。",
+    deliverable: "两张批次甘特图，以及 end-event order / result-artifact order / terminate decision 三列日志。",
+    reviewQuestion: "PI 为什么选择“一个 sequential，整批 sequential”，而不是像 barrier 一样只隔离该调用？",
+    reviewAnswer: "当前实现用批次级保守语义避免读写调用互相越过，规则简单且可预测，代价是牺牲部分并发度。教程必须描述真实选择，不能把更复杂的 barrier 调度误写成现状。",
+  },
+  P06: {
+    failureTrigger: "给 message_end listener 延迟 300ms，在 listener 内先通知扩展、再 append JSONL；同时调用 waitForIdle 并记录各时刻。",
+    failureSymptom: "Agent state 先更新，但工具下一阶段和 idle 都必须等待 listener；agent_end 可早于真正 settled，JSONL 不能在 idle 后才补写。",
+    debugPath: "沿 processEvents reducer→sequential listeners→AgentSession._handleAgentEvent→extension→SessionManager.append→finishRun。",
+    experiment: "注册带 deferred promise 的 listener，手动释放前断言 Agent state 已变、waitForIdle 未完成、SessionManager 尚未 append；释放后再核对顺序。",
+    deliverable: "一条毫秒级提交时间线，标出 event emitted、state reduced、extension settled、JSONL appended 与 idle。",
+    reviewQuestion: "为什么 awaited listener 是提交屏障，而不只是 UI 通知机制？",
+    reviewAnswer: "循环会等待 listener promise；AgentSession 又在该 promise 内完成扩展和持久化。因此下一阶段和 waitForIdle 不会越过这些动作，它们属于运行协议的提交路径。",
+  },
+  P07: {
+    failureTrigger: "创建 A→B→C 路径，从 A branch 出 D→E，再在第二条路径写 compaction entry；多次切换 leaf 并 build context。",
+    failureSymptom: "JSONL 同时保留 B/C 与 D/E；活动上下文只沿当前 leaf 回根，并仅应用该路径最新 compaction，不得混入另一分支。",
+    debugPath: "检查 _appendEntry 的 parentId、leafId 更新、branch 只移动指针、buildSessionPath 回溯和 buildContextEntries 的 latest compaction 选择。",
+    experiment: "输出文件行顺序、byId 图、两个 leaf 的 root-to-leaf path 和最终 AgentMessage[]；确认 CustomEntry 不进模型、CustomMessageEntry 才投影。",
+    deliverable: "一棵真实 JSONL parentId 树、两条活动路径，以及各自 compaction 前后上下文 diff。",
+    reviewQuestion: "为什么 SessionManager 不能按 JSONL 文件行顺序恢复当前对话？",
+    reviewAnswer: "文件包含所有分支和非模型条目，行顺序只表示追加时间。当前对话由 leaf 与 parentId 唯一确定，再由 compaction entry 改写模型可见前缀。",
+  },
+  P08: {
+    failureTrigger: "在未信任项目中放置一个注册 tool 和 listener 的扩展；完成信任后加载，再 reload 并调用旧 ExtensionContext。",
+    failureSymptom: "信任前项目代码不执行；信任后能力出现；reload 后旧 ctx 的 API 稳定抛 stale-context，旧 EventBus listener 被注销。",
+    debugPath: "记录 loadProjectTrustExtensions 的来源过滤、projectTrusted 切换、最终 package resolve、ExtensionRuntime.invalidate 与 assertActive。",
+    experiment: "让扩展递增模块副作用计数并订阅事件；检查信任前计数为零、加载后为一、reload 后旧 listener 不再响应且旧 ctx 注册失败。",
+    deliverable: "一张资源来源/信任/是否执行矩阵，以及 reload 前后 listener 数量和 stale error 对照。",
+    reviewQuestion: "为什么热重载时清 module cache 仍不足够？",
+    reviewAnswer: "旧闭包仍持有 EventBus、Session 和注册 maps 的引用。invalidate + assertActive 把跨代使用变成显式错误，并主动撤销订阅；单纯重载模块无法回收这些活对象。",
+  },
+
+  N01: {
+    failureTrigger: "同时发送同 session 的两条普通消息、另一 session 的一条消息，并在首个 session 活跃时再注入 follow-up。",
+    failureSymptom: "同 session 只能串行提交，跨 session 可并发；活跃 session 的普通 follow-up 进入 pending queue，未消费部分在轮次结束后重新发布。",
+    debugPath: "从 InboundMessage.session_key、MessageBus.get_inbound 到 AgentLoop.run 的 active session 判断，再追 _dispatch 的 per-session lock 与 semaphore。",
+    experiment: "给两个 session 的处理器加入不同 delay，记录 bus dequeue、lock acquire、pending injection、re-publish 和 outbound 时间。",
+    deliverable: "一张 session A/B 并发甘特图，以及活跃轮次 pending queue 的入队、消费、回流日志。",
+    reviewQuestion: "为什么只读 MessageBus 无法得出 nanobot 的并发语义？",
+    reviewAnswer: "Bus 只有统一信封和两只 Queue，不知道 session lock、active run、pending injection 或全局 semaphore。真正的调度所有者是 AgentLoop。",
+  },
+  N02: {
+    failureTrigger: "让 Runner 生成两个工具调用，第一个完成后在 awaiting_tools 与 tools_completed 之间触发 /stop，再恢复同一 session。",
+    failureSymptom: "恢复历史必须包含成对 tool_call/tool_result 或可解释的取消结果；已完成工具不应整轮重做，save 仍先于 outbound complete。",
+    debugPath: "按七阶段 Turn 记录 restore/compact/command/build/run/save/respond，进入 Runner 后额外记录两个 checkpoint 和取消物化路径。",
+    experiment: "用可控工具屏障分别在工具前、首工具后、tools_completed 后取消，重启 SessionStore 后比较下一轮 history 与副作用次数。",
+    deliverable: "三种取消时机的 checkpoint、持久消息、重放行为与副作用次数矩阵。",
+    reviewQuestion: "为什么 nanobot 需要 Loop 和 Runner 两层，而不是一个 while 完成全部事情？",
+    reviewAnswer: "Loop 拥有 session 锁、阶段提交、持久化和投递；Runner 只推进一次模型—工具事务。分层后取消恢复和 durable save 不必侵入模型循环。",
+  },
+  N03: {
+    failureTrigger: "在持久历史中制造 orphan tool result、缺失 result 和超大工具输出，再运行一次 context build 与 model governance。",
+    failureSymptom: "Session 原件保持不变；legal replay 先选合法后缀，Builder 组装来源，Governor 只在 model copy 修复协议并离线大结果。",
+    debugPath: "保存三个对象的 hash：Session.get_history 输出、ContextBuilder messages、ContextGovernor model copy，并逐项标记哪一层产生差异。",
+    experiment: "构造带项目 AGENTS.md、Agent SOUL/USER 和坏工具链的 session，执行三次投影；比较发送前后 Session.messages 是否完全相等。",
+    deliverable: "一张 persisted / replay / assembled / model 四列消息 diff，并标注每个删改动作的所有者。",
+    reviewQuestion: "为什么 ContextGovernor 必须只改模型副本？",
+    reviewAnswer: "它解决 Provider 可接受性和 token 预算，不是修改历史事实。若原地改 Session，下一次保存、审计和 append boundary 都会被一次临时发送策略污染。",
+  },
+  N04: {
+    failureTrigger: "运行 A 获得 ProviderSnapshot 后修改 provider/model/config 并 invalidate，再在 A 未结束时准入运行 B。",
+    failureSymptom: "A 全程使用旧 generation；B 在下一次 admit 获得完整新 snapshot；任何运行都不能一半使用旧 provider、一半使用新 catalog。",
+    debugPath: "记录 ProviderSpec/factory validation、snapshot signature/generation、watcher.invalidate 和 ModelRuntimeResolver.admit 的时刻与对象身份。",
+    experiment: "FakeProvider 在每次 call 回传 generation 标签；阻塞 A、刷新配置、启动 B，断言两个 run 各自只出现一个 generation。",
+    deliverable: "一条 A/B 与 config refresh 的时间线，以及两个 immutable LLMRuntime 内容快照。",
+    reviewQuestion: "为什么配置 watcher 只 invalidate，而不直接修改运行中的 runtime？",
+    reviewAnswer: "直接修改会撕裂一次 turn 的模型、认证、窗口和私有 continuation。invalidate 把变化推迟到下一次 admission，让每个 run 持有自洽快照。",
+  },
+  N05: {
+    failureTrigger: "返回 read-only A、read-only B、write C、read-only D 四个 tool call，并让 B 最先完成。",
+    failureSymptom: "A/B 可同批 gather，C 独占并阻止 D 越过；结果消息仍按 A→B→C→D，而未知名或 schema 错误在执行前稳定失败。",
+    debugPath: "从 ToolLoader discovery、ToolRegistry.prepare_call 到 _partition_tool_batches 和 _execute_tools，记录 definition 排序、typed params 与 batch 边界。",
+    experiment: "为四工具加开始/结束日志和副作用计数，另提交一个近似工具名和错误参数；对照实际执行、提示和结果顺序。",
+    deliverable: "一张工具能力声明/批次/开始结束/结果位置表，以及两个 pre-execution 错误样本。",
+    reviewQuestion: "为什么并发安全必须是工具能力声明，而不是根据名称维护白名单？",
+    reviewAnswer: "调度器需要知道真实副作用和 exclusive 约束，名称无法表达输入相关或插件工具语义。能力声明让内置与第三方工具使用同一协议，默认还可保守地不并发。",
+  },
+  N06: {
+    failureTrigger: "让会话超过压缩阈值，并分别让摘要模型成功、失败、进程在 temp 写完后 replace 前终止。",
+    failureSymptom: "成功或 raw fallback 都可推进 last_consolidated；Session.messages 不被删除；中断保存不能留下半个正式 JSONL，旧文件仍可读。",
+    debugPath: "检查 token boundary、Consolidator.archive/raw_archive、cursor 更新、provider state 清理，以及 JsonlSessionStore temp→fsync→replace。",
+    experiment: "保存压缩前后 session/history 两份 JSONL 和 cursor；故障注入 os.replace 前退出，再重启并验证正式文件、recent legal suffix 与 archived summary。",
+    deliverable: "一张 Session/history/cursor 三账本对照，以及原子保存故障前后的文件清单。",
+    reviewQuestion: "为什么 last_consolidated 不是删除边界？",
+    reviewAnswer: "它只说明哪些旧消息已归档。Session 仍保存原始事实，get_history 还会向前保留近期合法后缀；模型视图与归档进度因此能独立演进。",
+  },
+  N07: {
+    failureTrigger: "准备一批未 dream 的 history，让受限工具先成功编辑 MEMORY.md，再返回 tool error；下一次运行改为 clean completion。",
+    failureSymptom: "失败批次不能推进 .dream_cursor，也不能以模型自述宣告完成；成功批次才推进 cursor，并由真实 worktree diff 决定 Git audit commit。",
+    debugPath: "记录 history cursor、Dream prompt 中的文件快照、受限 ToolRegistry、process_direct stop reason/tool errors、cursor write 和 git diff。",
+    experiment: "尝试写允许文件与越界文件各一次；故意制造工具错误后重跑，核对同一 history 是否被再次处理以及 commit message 是否来自真实 diff。",
+    deliverable: "一张允许/拒绝文件矩阵、失败/成功 cursor 对照和实际 Git diff/commit 证据。",
+    reviewQuestion: "为什么 Dream 不能在模型说“完成”后立即推进 cursor？",
+    reviewAnswer: "模型文本不能证明文件工具成功、权限未越界或改动真实存在。clean stop、无工具错误、真实 diff 和 cursor commit 共同构成可重试事务。",
+  },
+  N08: {
+    failureTrigger: "让 MCP 首次连接失败、一个 channel send 重试一次，并在运行中发 shutdown signal；记录各资源创建和关闭顺序。",
+    failureSymptom: "Agent 不应看到半注册 MCP 工具；ChannelManager 自己处理投递重试；退出时长期任务取消，MCP/Channels 关闭并 durable flush sessions。",
+    debugPath: "从 gateway composition 的对象身份开始，追 MCP connect、gather task group、outbound dispatcher 与 finally shutdown，不进入 Runner 猜资源所有权。",
+    experiment: "用 FakeMCP/FakeChannel 记录 connect/register/send/retry/aclose，启动 Gateway 后触发一条消息和 shutdown，断言同一 registry 被 Agent 与 MCP 共享。",
+    deliverable: "一张资源所有权图和完整启动/投递/关闭事件时间线。",
+    reviewQuestion: "为什么 MCPProvider 的 connect/aclose 属于 Gateway，而不是 AgentRunner？",
+    reviewAnswer: "MCP 连接跨越多个 turn，生命周期与进程相同；Runner 只消费已注册工具。若 Runner 拥有连接，每轮都会重复建立资源并造成并发所有权冲突。",
+  },
+
+  C01: {
+    failureTrigger: "分别运行 --version、ACP fast path、--bare 默认路径，并采集模块加载列表、启动耗时与常驻内存。",
+    failureSymptom: "--version 不加载主程序；专用角色只加载自己的入口并终止；--bare 环境必须在 main 模块求值前生效。",
+    debugPath: "从 cli.tsx 第一条 performance shim、argv 分支、每个 dynamic import 到最终 import main，标记任何提前加载完整图的静态 import。",
+    experiment: "给模块 loader 增加只读 trace，比较三种 argv 的 import 数量和首个 UI/tool 模块出现位置；删除一个 dynamic boundary 做反例。",
+    deliverable: "三种启动角色的 import DAG、模块数/耗时/内存对照，以及一个静态 import 回归样本。",
+    reviewQuestion: "为什么 CLI import 图是架构，而不只是性能微优化？",
+    reviewAnswer: "同一二进制承载互斥进程角色。导入完整产品会带来初始化副作用、内存和协议污染；动态边界同时定义了每种角色允许拥有的依赖与生命周期。",
+  },
+  C02: {
+    failureTrigger: "用同一 prompt 分别走 REPL 的 query() 与 ACP/SDK 的 QueryEngine.submitMessage，记录事件消费、状态和持久化所有者。",
+    failureSymptom: "两者共享 queryLoop 语义，但 REPL 自己拥有 React/log/queue，QueryEngine 自己拥有跨 submit 的 messages/usage/denials；不能伪装成同一个 Session 类。",
+    debugPath: "正向追 REPL.tsx onQuery，另一路追 ACP createSessionMethod→new QueryEngine，再在 query() 汇合点与各自 commit 点分叉。",
+    experiment: "做双入口事件 trace，给相同 provider/tool 结果；比较共享事件和壳层专有状态，确认 REPL 没有隐式构造 QueryEngine。",
+    deliverable: "一张“两种壳—一个 loop—两个 commit owner”的调用图和状态所有权表。",
+    reviewQuestion: "为什么源码里保留两个产品壳不一定是重复设计？",
+    reviewAnswer: "REPL 需要 React 交互、队列和本地日志，SDK/ACP 需要 headless 跨调用状态。它们复用 queryLoop 的模型—工具语义，但不强迫产品状态服从同一生命周期。",
+  },
+  C03: {
+    failureTrigger: "依次制造 413 overflow、max-output、media error 和流式 fallback，观察 queryLoop 的 transition、guard 与被回收的暂态消息。",
+    failureSymptom: "每类恢复只能按具名迁移发生有限次数；fallback 必须 tombstone 孤儿 assistant/tool state；超出 guard 后返回终态，不能无限 continue。",
+    debugPath: "记录每次循环入口的完整 State、messagesForQuery 投影步骤、stream terminal 和 collapse/compact/continuation transition reason。",
+    experiment: "FakeProvider 按调用次数返回四类错误，再成功；保存每次 provider input 与 next State，检查旧 StreamingToolExecutor 和 tool_use_id 是否泄漏。",
+    deliverable: "一张 transition 状态图、每次恢复前后的完整 State diff，以及 guard 终止证据。",
+    reviewQuestion: "为什么恢复分支要重写完整 State，而不是只设置一个 retry=true？",
+    reviewAnswer: "恢复同时改变 messages、预算、transition、失败 guard 和暂态 executor。完整 State 迁移让每个 continue 的输入可审计，避免遗留上次尝试的 tool 或流式状态。",
+  },
+  C04: {
+    failureTrigger: "两个 concurrency-safe 工具 B 先于 A 完成，并各自返回修改同一 context key 的 modifier；再加入 unsafe 工具作为串行分界。",
+    failureSymptom: "UI 消息可以 B 先显示，但 context modifier 必须按 tool_use A→B 提交；unsafe 调用不与相邻安全批次重叠。",
+    debugPath: "追 Tool.isConcurrencySafe(input)、partitionToolCalls、并发池 yield、toolUseID modifier map 和按原 blocks 顺序应用的 commit。",
+    experiment: "A/B 分别延迟 200/20ms 并 append A/B 到 context；重复运行多次，确认可见顺序受延迟影响但最终 context 始终 A→B。",
+    deliverable: "一张完成顺序与提交顺序双时间线，以及多次运行最终 context hash 对照。",
+    reviewQuestion: "为什么“消息按完成时间可见、状态按源顺序提交”是合理的双顺序？",
+    reviewAnswer: "前者降低用户等待，后者隔离 I/O 抖动对共享状态的影响。把两者混为完成顺序会让相同模型输出产生非确定的下一轮上下文。",
+  },
+  C05: {
+    failureTrigger: "让 PreToolUse Hook 返回 allow 并改写输入，同时组织规则匹配 deny；再测试 ask 与 noninteractive/requireCanUseTool。",
+    failureSymptom: "deny 必须覆盖 Hook allow；ask 仍进入 canUseTool；任何拒绝都生成配对 tool_result，但真实 tool.call 副作用计数保持零。",
+    debugPath: "保存 raw、Zod-valid、semantic-valid、processed、hook-updated 与 final call input，追 resolveHookPermissionDecision 的优先级和 call boundary。",
+    experiment: "构造四组 rule/hook 组合，给工具 body 加计数器；输出最终 PermissionDecision、模型可见拒绝结果和实际副作用次数。",
+    deliverable: "一张 deny/ask/allow × hook decision 决策表，以及六个输入版本的字段 diff。",
+    reviewQuestion: "为什么 Hook 的 allow 不能被当成最高权限？",
+    reviewAnswer: "Hook 是扩展自动化，不应越过组织 deny、用户 ask 或强制交互策略。源码把它作为建议并继续进入规则格，保持安全边界的单调性。",
+  },
+  C06: {
+    failureTrigger: "同时提供 override/coordinator/agent/custom/default system prompt，并在 Managed、User、Project、Local 四层放同名规则与 include。",
+    failureSymptom: "system identity 按替换/追加规则稳定解析；memory 按来源和 root→cwd 顺序保留路径，循环 include 被阻止，worktree 不重复注入。",
+    debugPath: "分开记录 buildEffectiveSystemPrompt、getSystemContext memoized Git snapshot、getMemoryFiles source ordering 和 getClaudeMds render。",
+    experiment: "在临时目录树创建四层 CLAUDE.md 与 include，切换 cwd/worktree；保存最终 prompt 每段的来源、顺序和是否被替换。",
+    deliverable: "一张 system prompt 决策表和一份带绝对来源标注的 memory 合并清单。",
+    reviewQuestion: "为什么 Prompt 不能被理解为一个不断 concat 的字符串？",
+    reviewAnswer: "系统身份、环境快照和 memory 文件有不同所有者、优先级与缓存周期。无条件拼接会造成互相冲突、来源丢失和会话中途漂移。",
+  },
+  C07: {
+    failureTrigger: "触发 compact 并保留一段含并行 tool_use/tool_result 的近期后缀，写入 JSONL 后退出；再删除一个 preservedSegment 端点并 resume。",
+    failureSymptom: "正常恢复重连 head/anchor/tail 并补回并行 sibling/result；端点缺失时宁可放弃 prune、返回完整旧历史，也不能静默少消息。",
+    debugPath: "追 compact boundary metadata、recordTranscript UUID dedup、applyPreservedSegmentRelinks 验证、buildConversationChain parent 回溯和 DAG repair。",
+    experiment: "保存 compact 前内存链、JSONL 行和 resume 链；分别运行完整端点与损坏端点，执行 checkResumeConsistency 并比较 tool 配对。",
+    deliverable: "一张 write→load UUID 端点图、正常/损坏恢复 diff，以及并行工具 DAG 的节点清单。",
+    reviewQuestion: "为什么 compact 的正确性必须验证退出再恢复，而不能只看内存结果？",
+    reviewAnswer: "messagesToKeep 已经存在于 JSONL，UUID 去重不会重写旧 parent。内存看似连续并不保证磁盘链可恢复，必须靠 boundary metadata 与读侧 relink 完成逆过程。",
+  },
+  C08: {
+    failureTrigger: "让 MCP server 首次调用返回 session expired，重连后成功；同时让 managed、session、marketplace、builtin 插件提供同名 command。",
+    failureSymptom: "MCP 只重试一次并保持同一内部 Tool 合同；插件同名资源按 managed policy 与 session>marketplace>builtin 决定，来源和错误不能丢。",
+    debugPath: "分两路追 fetchToolsForClient adapter/call recovery 与 pluginLoader create/merge sources，最后在 queryLoop 的 turn-boundary refresh 汇合。",
+    experiment: "FakeMCP 暴露 annotations/schema 并模拟过期；创建四来源同名资源，记录最终 Tool flags、调用次数、获胜来源和下一 turn 工具表。",
+    deliverable: "一张外部协议→内部 Tool 字段映射表，以及插件来源优先级和 MCP 重连事件序列。",
+    reviewQuestion: "为什么 MCP 与插件都必须先适配成内部能力，再交给 queryLoop？",
+    reviewAnswer: "loop 只应理解稳定 Tool/Command/Hook 协议。连接状态、session 重连、manifest 路径和来源策略属于边界层，否则每个外部生态都会污染核心状态机。",
+  },
+
+  O01: {
+    failureTrigger: "给一次真实消息生成全链路 trace，并故意让 Channel、routing、Harness、core、delivery 各记录一个同名但不同含义的 status。",
+    failureSymptom: "每个事实只能由一层首次确认并被下游携带；core 不应重新推断 peer，delivery 失败也不应把已完成的推理判成未执行。",
+    debugPath: "按 runChannelTurn admission→route/session→Harness selection→runAttempt/agent-core→delivery settlement，给每段输入输出标 owner。",
+    experiment: "用固定 trace id 跑一条成功和一条 delivery 失败消息，收集六层结构化事件；删除任一层字段，观察下游是否错误重算。",
+    deliverable: "一张事实所有权矩阵和两条端到端 trace，明确第一个外部副作用与最终可见性判断。",
+    reviewQuestion: "为什么 OpenClaw 的主链不能简化成 Channel→Agent→send？",
+    reviewAnswer: "中间还有身份归属、session 隔离、Harness/runtime 选择和投递结算。省略这些层会把已确认事实重新塞回 Agent 猜测，也无法区分模型完成与用户真正收到。",
+  },
+  O02: {
+    failureTrigger: "在并行工具批次运行时放入 steering，并在 Agent 本应结束时放入 follow-up；令一个尚未启动的 tail call 被 steering 跳过。",
+    failureSymptom: "已启动工具安全完成，未启动调用得到配对 skipped result；steering 进入内层检查点，follow-up 只在内层退出后进入外层。",
+    debugPath: "同时记录 Agent 两只 PendingMessageQueue、nested runLoop、tool execution arrays、ordered finalized calls 和 transcript result 顺序。",
+    experiment: "三个工具设置不同启动 barrier，运行中注入 steering/follow-up；输出实际启动、完成、跳过、结果提交和下一 turn 的时间线。",
+    deliverable: "一张双队列/双循环图和并行工具批次中 started/skipped/result 的配对表。",
+    reviewQuestion: "为什么 steering 检查点必须保证每个 tool_use 都有结果？",
+    reviewAnswer: "Provider transcript 要求调用与结果配对。若直接截断尚未执行的尾部调用，下一轮会看到悬空 tool_use；合成 skipped result 才能在改变方向时保持协议合法。",
+  },
+  O03: {
+    failureTrigger: "同 session 启动 A 后再启动 B，不同 session 启动 C；让全局并发只有一，并连续触发可重试错误直到预算耗尽。",
+    failureSymptom: "B 先等 session lane，C 可竞争 global lane；每次 run 持有同一 prepared snapshot；超过预算返回 blocked terminal 并完整释放 lease/MCP/context。",
+    debugPath: "追 identity 回填、session/global lane admission、prepared runtime lease、run-loop retryKind/budget 和 finally cleanup。",
+    experiment: "用 barrier 控制 A/B/C，FakeAttempt 前两次失败第三次成功，再测试超预算；记录 lane wait、lease identity、attempt 次数和资源计数。",
+    deliverable: "一张三运行 lane 甘特图、一张 retry state table 和前后资源/lease 数量对照。",
+    reviewQuestion: "为什么 session lane 必须在 global lane 之前？",
+    reviewAnswer: "先串行同会话维护与运行，能避免同一 transcript 争用；随后才占全局稀缺额度。反过来会让等待同会话锁的请求白占全局并发槽。",
+  },
+  O04: {
+    failureTrigger: "构造 dispatch 提前报错但平台已经接受 partial reply、finalization 又失败的组合，并模拟相同入站事件重试。",
+    failureSymptom: "入站事实只记录一次；已可见 partial 的优先级高于早期 dispatch error，不能重复发送；deferred settlement 仍保留 finalization 错误。",
+    debugPath: "记录 ingest/classify/preflight、route assembly、session record、dispatch result、provider receipt、pending delivery 和 lifecycle settle。",
+    experiment: "FakeChannel 返回 accepted receipt 后抛 finalization error，重复调用同一 turn；比较 session entries、send count、visible result 与 retry decision。",
+    deliverable: "一张 admission/dispatch/delivery 三状态乘积表，以及 partial accepted 场景的单次发送证据。",
+    reviewQuestion: "为什么 Agent run 成功不能直接等价为一次 Channel Turn 成功？",
+    reviewAnswer: "模型终态与外部平台投递是两个提交边界。平台可能已接受部分内容、回执延迟或结算失败；只有 delivery owner 能判断用户可见性和是否安全重试。",
+  },
+  O05: {
+    failureTrigger: "配置 peer、parent、role、guild、account、channel 多层 binding，并用两个 direct peer 分别切换 main/per-peer/per-channel-peer dmScope。",
+    failureSymptom: "匹配必须按固定 tier 首次命中并记录 matchedBy；session key 隔离随 dmScope 改变；畸形 agent: key 必须拒绝而不是回落默认 Agent。",
+    debugPath: "打印 normalized BindingScope、索引候选、每个 tier 命中、agentId/dmScope 和 buildAgentPeerSessionKey 最终字符串。",
+    experiment: "建立一组重叠 binding 测试表，对每个输入断言 matchedBy 与 sessionKey；再传 malformed key，确认 store guard fail closed。",
+    deliverable: "一张 binding tier 决策表和四种 dmScope 下的会话隔离矩阵。",
+    reviewQuestion: "为什么 session key 既不能由 prompt 推断，也不能当作授权令牌？",
+    reviewAnswer: "它由已验证渠道身份和路由配置编码，用于历史隔离；知道或伪造字符串不等于拥有 transport 权限。授权必须继续依赖可信 session metadata 与 policy。",
+  },
+  O06: {
+    failureTrigger: "运行 A 持有 generation 1 lease 时触发 config+auth refresh；在 replacement gate 开启时启动 B，并让新 owner 构建中途失败一次。",
+    failureSymptom: "A 继续使用 gen1；B 等 gate，不能读半套 gen2；失败批次不发布部分 owner；重试成功后 B 才获得完整 gen2，A release 不删除 gen2。",
+    debugPath: "追 stale 标记、pending replacement id/epoch、owner batch build、atomic publish、acquire identity check、leaseCount 与 release owner identity。",
+    experiment: "给 build owner 加 barrier/failure injection，运行 A/B 并记录 snapshot object identity；在 A release 后检查 owners map 和 gen2 可见性。",
+    deliverable: "两条 generation 时间线、gate 状态表和 release 前后 owner/leaseCount 快照。",
+    reviewQuestion: "为什么 release 必须比较 owner 对象身份，不能只按同一个 key 删除？",
+    reviewAnswer: "热更新后新旧 owner 可以共享逻辑 key。旧 run 释放时若只按 key 删除，会误删已经发布的新 generation；绑定对象身份才能只退休自己持有的版本。",
+  },
+  O07: {
+    failureTrigger: "让某工具先被 sender policy 从目录移除；另一工具可见，但 plugin hook 重写最终参数为 schema 非法或需要 owner approval。",
+    failureSymptom: "被目录过滤的工具从不出现在模型 schema；可见工具的每次调用仍经过 trusted policy、approval、hook、final owner approval 和最终 schema 校验。",
+    debugPath: "保存 candidate tools、每个 named surface layer 的 exclusion provenance，以及 raw/prepared/policy/hook/final 参数和最终 outcome。",
+    experiment: "为同一工具配置 group allow、sender deny，再反转；对获准调用让 hook 改参数，分别触发 blocked、requireApproval、schema failure 和成功。",
+    deliverable: "一张工具目录过滤漏斗、一张单次调用参数版本 diff 和最终副作用计数。",
+    reviewQuestion: "为什么只在 execute 前做一次 allow/deny 不足够？",
+    reviewAnswer: "目录阶段决定模型是否应看见能力，调用阶段还要审查具体参数和动态身份；Hook/审批会改写参数，因此最终 shape 必须在真正副作用前再次校验。",
+  },
+  O08: {
+    failureTrigger: "安装两个声明同一 Harness id 的插件；再选择一个显式但不支持当前 route 的 runtime，并与 runtime=auto 对照。",
+    failureSymptom: "重复 id 必须报告已有 owner；显式 runtime 缺失/不支持/执行失败都 fail closed；只有 auto 无匹配时回到 built-in。",
+    debugPath: "从 manifest required runtime→gateway startup plan→registerAgentHarness owner→active registry→selection explicit/auto→dispose on reload。",
+    experiment: "构造两个最小 Harness 插件和三种 route support，运行 explicit、auto、duplicate id、reload 四组场景并记录 ownerPluginId 与最终选择。",
+    deliverable: "一张 manifest 激活/registry owner/selection 结果表，以及显式与 auto 的失败语义对照。",
+    reviewQuestion: "为什么显式选择插件 Harness 时不能在失败后静默回落 built-in？",
+    reviewAnswer: "Harness 会改变线程、工具、模型协议和安全语义。用户显式选择意味着这些语义是必要条件；静默回落会产生看似成功但运行世界错误的结果。",
   },
 };
 
@@ -2031,7 +2356,7 @@ function traceOutput(steps: string[], index: number) {
   return `交给 ${steps[index + 1]} 的标准对象、事件或可等待结果`;
 }
 
-function invariantExplanation(point: string) {
+function invariantExplanation(point: string, detail: LessonDetail) {
   if (/会话|历史|持久|记录|分支|真源/i.test(point)) return "它保证恢复、回放和 UI 不需要维护第二份互相同步的事实；一旦破坏，最先出现的是历史分叉与不可审计。";
   if (/工具|权限|策略|校验|沙箱/i.test(point)) return "它把模型意图与真实副作用隔开；一旦破坏，工具协议会退化成不可控制的函数直调。";
   if (/模型|provider|流|响应/i.test(point)) return "它把厂商差异封在传输边界；一旦破坏，Agent Loop 会被供应商字段和流式细节污染。";
@@ -2039,12 +2364,22 @@ function invariantExplanation(point: string) {
   if (/消息|队列|渠道|入口|路由/i.test(point)) return "它让外部入口只负责翻译和投递；一旦破坏，每增加一个渠道都要复制核心执行逻辑。";
   if (/插件|组合|替换|扩展|注册/i.test(point)) return "它让变化集中在稳定扩展面；一旦破坏，新增能力就只能修改中心模块并扩大回归范围。";
   if (/生命周期|启动|关闭|副作用|回收/i.test(point)) return "它确保资源的创建者也负责结束；一旦破坏，监听器、连接与后台任务会跨轮残留。";
-  return "它约束这一层只拥有自己的状态和转换；一旦破坏，边界两侧会开始互相读取内部细节。";
+  if (/顺序|串行|并发|批次|barrier|屏障/i.test(point)) return "它把“可以同时执行”和“必须确定提交”分开；一旦破坏，相同模型输出会因 I/O 完成时序不同而产生不同上下文。";
+  if (/turn|step|steer|follow|inject|轮次|停止/i.test(point)) return "它规定新输入第一次可见的检查点；一旦破坏，用户介入会随机落入当前工具、下一步或下一轮。";
+  if (/snapshot|generation|lease|代际|快照|准入|刷新/i.test(point)) return "它保证一次运行只读取一个完整世代；一旦破坏，热更新会让同一 turn 混用新旧模型、认证或插件状态。";
+  if (/身份|session key|隔离|归属|owner|所有者/i.test(point)) return "它要求身份与状态只有一个权威来源；一旦破坏，下游会重新猜测归属，造成历史串线或旧 owner 误删新状态。";
+  if (/失败|拒绝|fail|error|回落|fallback/i.test(point)) return "它把不满足前提的情况变成显式终态；一旦破坏，系统会以错误的执行器、权限或上下文继续，看似成功却不可解释。";
+  if (/表面|投影|视图|可见/i.test(point)) return "它把 durable fact 与临时消费视图分开；一旦破坏，一次模型预算或 UI 选择就会反向改写历史原件。";
+  if (/协议|配对|终止|artifact|结果/i.test(point)) return "它保证每个开始都有唯一、可回放的结束表示；一旦破坏，下一轮会遇到悬空调用、重复结果或无法判定的半终态。";
+  if (/发现|清单|manifest|目录|激活/i.test(point)) return "它区分“知道能力存在”与“允许加载并执行能力”；一旦破坏，扫描插件或工具目录本身就会触发不受控代码。";
+  const anchors = detail.evidence.slice(0, 2).map((item) => item.symbol).join(" 与 ");
+  return `这条约束要同时在 ${anchors} 两侧成立：前者定义状态或决策，后者证明它怎样被消费；只看一侧还不能把“${point}”当成架构事实。`;
 }
 
 function Lecture({ lesson, project }: { lesson: Lesson; project: ProjectKey }) {
   const detail = lessonDetails[lesson.id];
   const study = projectStudyGuides[project];
+  const drill = lessonDrills[lesson.id];
 
   return (
     <article className="lecture">
@@ -2162,7 +2497,7 @@ function Lecture({ lesson, project }: { lesson: Lesson; project: ProjectKey }) {
           </div>
           <div className="invariant-grid">
             {lesson.points.map((point, index) => (
-              <div key={point}><span>INVARIANT 0{index + 1}</span><h3>{point}</h3><p>{invariantExplanation(point)}</p></div>
+              <div key={point}><span>INVARIANT 0{index + 1}</span><h3>{point}</h3><p>{invariantExplanation(point, detail)}</p></div>
             ))}
           </div>
         </div>
@@ -2173,9 +2508,9 @@ function Lecture({ lesson, project }: { lesson: Lesson; project: ProjectKey }) {
           <h2>失败路径：故意拆坏，再学会定位</h2>
           <p className="section-lead">只读成功路径容易产生“我好像懂了”的错觉。下面把一个边界主动破坏，观察症状，再沿最短证据链回到根因。</p>
           <div className="failure-lab">
-            <div><small>01 · INJECT</small><h3>怎样制造故障</h3><p>{study.failureTrigger}</p></div>
-            <div><small>02 · OBSERVE</small><h3>你会先看到什么</h3><p>{study.failureSymptom}</p></div>
-            <div><small>03 · TRACE</small><h3>最短调试路径</h3><p>{study.debugPath}</p></div>
+            <div><small>01 · INJECT</small><h3>怎样制造故障</h3><p>{drill.failureTrigger}</p></div>
+            <div><small>02 · OBSERVE</small><h3>你会先看到什么</h3><p>{drill.failureSymptom}</p></div>
+            <div><small>03 · TRACE</small><h3>最短调试路径</h3><p>{drill.debugPath}</p></div>
           </div>
           <div className="debug-checkpoints">
             <span>建议断点</span>
@@ -2196,14 +2531,14 @@ function Lecture({ lesson, project }: { lesson: Lesson; project: ProjectKey }) {
               <ol>
                 <li><b>0–8 分钟：</b>打开 <code>{detail.evidence[0].file}</code>，搜索 <code>{detail.evidence[0].symbol}</code>，只追一层调用方与一层被调用方。</li>
                 <li><b>8–16 分钟：</b>打开 <code>{detail.evidence[1].file}</code>，确认第二个证据是否与第一个共享同一状态、事件或协议。</li>
-                <li><b>16–28 分钟：</b>{study.experiment}</li>
+                <li><b>16–28 分钟：</b>{drill.experiment}</li>
                 <li><b>28–35 分钟：</b>把观察结果映射回 <code>{lesson.flow.join(" → ")}</code>，标出第一次发生分歧的位置。</li>
               </ol>
             </div>
             <div className="lab-deliverable">
               <small>ACCEPTANCE CRITERIA</small>
               <h3>交付物，而不是读后感</h3>
-              <p>{study.deliverable}</p>
+              <p>{drill.deliverable}</p>
               <ul>
                 <li><span>□</span> 能指出状态真正的拥有者</li>
                 <li><span>□</span> 能指出第一个真实副作用发生点</li>
@@ -2219,12 +2554,18 @@ function Lecture({ lesson, project }: { lesson: Lesson; project: ProjectKey }) {
         <div className="section-wide">
           <h2>架构评审题：能答到什么深度，才算真的会了</h2>
           <div className="review-questions">
-            {study.reviewQuestions.map((item, index) => (
-              <details key={item.question}>
-                <summary><span>Q{index + 1}</span><strong>{item.question}</strong><i>展开参考答案 ＋</i></summary>
-                <p>{item.answer}</p>
-              </details>
-            ))}
+            <details>
+              <summary><span>Q1</span><strong>{drill.reviewQuestion}</strong><i>展开参考答案 ＋</i></summary>
+              <p>{drill.reviewAnswer}</p>
+            </details>
+            <details>
+              <summary><span>Q2</span><strong>故障实验出现什么现象，才算真的支持本课结论？</strong><i>展开参考答案 ＋</i></summary>
+              <p>{drill.failureSymptom}</p>
+            </details>
+            <details>
+              <summary><span>Q3</span><strong>如果结果不符合预期，最短应从哪条调用链开始定位？</strong><i>展开参考答案 ＋</i></summary>
+              <p>{drill.debugPath}</p>
+            </details>
             <details>
               <summary><span>Q4</span><strong>本课结论在源码中由哪两个位置共同支持？</strong><i>展开参考答案 ＋</i></summary>
               <p><code>{detail.evidence[0].file}</code> 的 <code>{detail.evidence[0].symbol}</code> 给出第一侧边界；<code>{detail.evidence[1].file}</code> 的 <code>{detail.evidence[1].symbol}</code> 给出组装、消费或生命周期的另一侧。只引用其中一个还不足以证明完整调用关系。</p>
