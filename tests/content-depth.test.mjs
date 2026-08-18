@@ -16,7 +16,7 @@ test("keeps all five architecture routes and forty lessons", () => {
 test("gives every lesson at least four real source anchors", () => {
   const evidenceAnchors = page.match(/\{\s*file:\s*"[^"]+",\s*symbol:\s*"[^"]+",[^}]*?note:/g) ?? [];
   assert.ok(evidenceAnchors.length >= 160, `expected at least 160 evidence anchors, found ${evidenceAnchors.length}`);
-  assert.match(page, /固定提交、精确到行/);
+  assert.match(page, /链接固定在提交/);
 });
 
 test("gives all forty lessons their own failure drill and review question", () => {
@@ -32,17 +32,29 @@ test("gives all forty lessons their own failure drill and review question", () =
 
 test("teaches from an Agent architecture learner perspective", () => {
   for (const section of [
-    "架构导读",
-    "逐节点调用链审计",
-    "设计不变量",
-    "失败路径",
-    "35 分钟动手实验",
-    "架构评审题",
+    "值得单独设计",
+    "控制权怎样移动",
+    "追下去",
+    "被破坏",
+    "用一次失败检验",
+    "适用到哪里",
   ]) {
     assert.match(page, new RegExp(section));
   }
 
-  assert.match(page, /状态归谁、控制权如何转移、边界怎样替换、失败在哪里收口/);
+  for (const repeatedJargon of ["三副“源码眼镜”", "ARCHITECTURE PRESSURE", "HANDS-ON LAB", "ACCEPTANCE CRITERIA"]) {
+    assert.doesNotMatch(page, new RegExp(repeatedJargon));
+  }
+});
+
+test("uses prose for arguments and reserves containers for useful interactions", () => {
+  for (const proseClass of ["editorial-intro", "evidence-list", "trace-story", "invariant-prose", "failure-story"]) {
+    assert.match(page, new RegExp(`className="${proseClass}`));
+  }
+
+  for (const removedTemplate of ["lesson-depth-contract", "essay-cards", "evidence-grid", "trace-audit", "invariant-grid", "failure-lab", "experiment-brief"]) {
+    assert.doesNotMatch(page, new RegExp(`className="${removedTemplate}`));
+  }
 });
 
 test("unpacks signature designs separately for every system", () => {
@@ -52,4 +64,12 @@ test("unpacks signature designs separately for every system", () => {
   for (const field of ["常规做法", "它的选择", "架构收益", "代价 / 边界"]) {
     assert.match(page, new RegExp(field));
   }
+});
+
+test("lets learners collapse and restore the course sidebar", () => {
+  assert.match(page, /agent-unpacked-sidebar-collapsed/);
+  assert.match(page, /aria-expanded=\{!sidebarCollapsed\}/);
+  assert.match(page, /aria-controls="course-sidebar-content"/);
+  assert.match(page, /展开课程侧边栏/);
+  assert.match(page, /收起课程侧边栏/);
 });

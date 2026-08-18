@@ -52,10 +52,6 @@ type CourseOverviewData = {
   tradeoffs: string[];
 };
 
-type ProjectStudyGuide = {
-  lenses: Array<{ title: string; question: string }>;
-};
-
 type LessonDrill = {
   failureTrigger: string;
   failureSymptom: string;
@@ -1669,34 +1665,64 @@ function CoursePage({
   const lesson = selectedId ? data.lessons.find((item) => item.id === selectedId) ?? null : null;
   const index = lesson ? data.lessons.findIndex((item) => item.id === lesson.id) : -1;
   const groups = useMemo(() => [...new Set(data.lessons.map((item) => item.group))], [data.lessons]);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      setSidebarCollapsed(window.localStorage.getItem("agent-unpacked-sidebar-collapsed") === "true");
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  const toggleSidebar = () => {
+    const next = !sidebarCollapsed;
+    setSidebarCollapsed(next);
+    window.localStorage.setItem("agent-unpacked-sidebar-collapsed", String(next));
+  };
 
   return (
-    <div className="course-layout">
-      <aside className="course-sidebar">
-        <div className="course-identity">
-          <small>当前路线</small>
-          <strong>{data.title}</strong>
-          <span>{data.language}</span>
+    <div className={`course-layout ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+      <aside className="course-sidebar" aria-label={`${data.label} 课程侧边栏`}>
+        <div className="sidebar-topline">
+          <div className="course-identity">
+            <small>当前路线</small>
+            <strong>{data.title}</strong>
+            <span>{data.language}</span>
+          </div>
+          <button
+            className="sidebar-toggle"
+            type="button"
+            onClick={toggleSidebar}
+            aria-expanded={!sidebarCollapsed}
+            aria-controls="course-sidebar-content"
+            aria-label={sidebarCollapsed ? "展开课程侧边栏" : "收起课程侧边栏"}
+            title={sidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
+          >
+            <span aria-hidden="true">{sidebarCollapsed ? "→" : "←"}</span>
+          </button>
         </div>
-        <button className={`overview-nav-button ${lesson ? "" : "selected"}`} onClick={() => showOverview(projectKey)}>
-          <span>00</span><b>路线总览 · 先看全局</b>
-        </button>
-        <nav aria-label={`${data.label} 课程目录`}>
-          {groups.map((group) => {
-            const lessons = data.lessons.filter((item) => item.group === group);
-            return (
-              <div className="lesson-group" key={group}>
-                <div className="group-name"><i style={{ background: lessons[0].groupColor }} />{group}</div>
-                {lessons.map((item) => (
-                  <button key={item.id} className={item.id === lesson?.id ? "selected" : ""} onClick={() => selectLesson(projectKey, item.id)}>
-                    <span>{item.id}</span><b>{item.title.split("：")[0]}</b>
-                  </button>
-                ))}
-              </div>
-            );
-          })}
-        </nav>
-        <a href={data.repo} target="_blank" rel="noreferrer" className="repo-link">查看官方源码 <span>↗</span></a>
+        <span className="collapsed-route-mark" aria-hidden={!sidebarCollapsed}>{data.title}</span>
+        <div id="course-sidebar-content" className="course-sidebar-content" aria-hidden={sidebarCollapsed}>
+          <button className={`overview-nav-button ${lesson ? "" : "selected"}`} onClick={() => showOverview(projectKey)}>
+            <span>00</span><b>路线总览 · 先看全局</b>
+          </button>
+          <nav aria-label={`${data.label} 课程目录`}>
+            {groups.map((group) => {
+              const lessons = data.lessons.filter((item) => item.group === group);
+              return (
+                <div className="lesson-group" key={group}>
+                  <div className="group-name"><i style={{ background: lessons[0].groupColor }} />{group}</div>
+                  {lessons.map((item) => (
+                    <button key={item.id} className={item.id === lesson?.id ? "selected" : ""} onClick={() => selectLesson(projectKey, item.id)}>
+                      <span>{item.id}</span><b>{item.title.split("：")[0]}</b>
+                    </button>
+                  ))}
+                </div>
+              );
+            })}
+          </nav>
+          <a href={data.repo} target="_blank" rel="noreferrer" className="repo-link">查看官方源码 <span>↗</span></a>
+        </div>
       </aside>
 
       <main className={`lesson-main ${lesson ? "" : "course-overview-main"}`}>
@@ -1705,14 +1731,7 @@ function CoursePage({
             <div className="breadcrumbs"><span>学习路径</span><i>/</i><span>{lesson.group}</span><i>/</i><b>{lesson.id}</b></div>
             <div className="lesson-kicker"><span>{lesson.id}</span>{lesson.kicker}</div>
             <h1>{lesson.title}</h1>
-            <blockquote style={{ borderColor: lesson.groupColor }}>{lesson.motto}</blockquote>
-
-            <div className="lesson-depth-contract" aria-label="本课学习产出">
-              <span><b>{lesson.flow.length}</b> 步调用链</span>
-              <span><b>{lessonDetails[lesson.id].evidence.length}</b> 个源码锚点</span>
-              <span><b>1</b> 个失败实验</span>
-              <span><b>3</b> 道架构评审题</span>
-            </div>
+            <p className="lesson-deck">{lesson.takeaway}</p>
 
             <div className="lesson-tabs">
               <button className={tab === "lecture" ? "active" : ""} onClick={() => setTab("lecture")}>讲义</button>
@@ -1739,8 +1758,8 @@ function CoursePage({
         {lesson ? (
           <>
             <div className="rail-progress"><span>路线进度</span><b>{String(index + 1).padStart(2, "0")} / {String(data.lessons.length).padStart(2, "0")}</b><i><em style={{ width: `${((index + 1) / data.lessons.length) * 100}%`, background: data.accent }} /></i></div>
-            <div className="rail-toc"><span>本页</span><a href="#start">架构导读</a><a href="#terms">核心词汇</a><a href="#flow">运行路径</a><a href="#code-tour">执行协议</a><a href="#evidence">源码证据</a><a href="#architecture">状态与边界</a><a href="#trace-audit">调用链审计</a><a href="#invariants">设计不变量</a><a href="#failure">失败路径</a><a href="#practice">验证实验</a><a href="#review">架构复盘</a></div>
-            <div className="rail-note"><span>Agent 架构学习法</span><p>不要以“看懂多少代码”衡量进度。每读一层，都要能回答：状态归谁、控制权如何转移、边界怎样替换、失败在哪里收口。</p></div>
+            <div className="rail-toc"><span>本页</span><a href="#start">问题与判断</a><a href="#flow">机制怎么运转</a><a href="#evidence">源码如何证明</a><a href="#invariants">不能破坏什么</a><a href="#failure">怎样验证</a><a href="#review">结论与边界</a></div>
+            <div className="rail-note"><span>读源码时只问三件事</span><p>数据从哪来、状态存在哪、失败停在哪。先回答清楚，再讨论抽象名词。</p></div>
           </>
         ) : (
           <>
@@ -1876,44 +1895,6 @@ function repoSourceUrl(project: ProjectKey, file: string, lineStart?: number, li
   const lines = lineStart ? `#L${lineStart}${lineEnd && lineEnd !== lineStart ? `-L${lineEnd}` : ""}` : "";
   return `${data.repo}/${targetType}/${data.revision}/${file}${lines}`;
 }
-
-const projectStudyGuides: Record<ProjectKey, ProjectStudyGuide> = {
-  dsh: {
-    lenses: [
-      { title: "作用域", question: "这项能力挂在哪个 ctx 上，谁创建、谁销毁？" },
-      { title: "投影", question: "事实以什么事件保存，又被谁投影成 UI 或模型消息？" },
-      { title: "组合顺序", question: "Profile、Bundle、patch 或 provider 的先后次序会改变什么？" },
-    ],
-  },
-  pi: {
-    lenses: [
-      { title: "成熟度", question: "这个符号只是被 export，还是当前 Coding Agent 真有调用方？未实现分支在哪里？" },
-      { title: "屏障", question: "事件发出后，循环会 await 哪些状态归约、扩展与持久化动作？" },
-      { title: "投影", question: "Provider、AgentMessage 和 JSONL tree 分别在哪一步变成本轮模型视图？" },
-    ],
-  },
-  nanobot: {
-    lenses: [
-      { title: "提交边界", question: "用户输入、provider state、工具 checkpoint、session save 和 outbound complete 的先后顺序是什么？" },
-      { title: "三重投影", question: "Session replay、ContextBuilder assembly 与 ContextGovernor model copy 各自允许改变什么？" },
-      { title: "资源所有权", question: "MCP、Channel、Cron、Dream、AgentLoop 和 Session flush 分别由谁创建、连接与关闭？" },
-    ],
-  },
-  claude: {
-    lenses: [
-      { title: "当前路径", question: "这个类是当前 REPL、ACP、SDK 哪一条路径的真实调用者，还是只写在注释/未来计划里？" },
-      { title: "顺序语义", question: "事件何时可见、共享 context 何时提交、JSONL 何时 ack，这三种顺序是否被混为一谈？" },
-      { title: "往返一致性", question: "一次 snip/compact/collapse 在内存里成功后，退出再 resume 是否重建同一条合法工具链？" },
-    ],
-  },
-  openclaw: {
-    lenses: [
-      { title: "事实所有者", question: "这个字段由 Channel、routing、runtime、core 还是 delivery 首次确认？下游是否又在重新推断？" },
-      { title: "提交边界", question: "入站记录、模型终态、工具副作用和渠道发送分别在何时成为不可重做的事实？" },
-      { title: "代际与租约", question: "reload 窗口内，新请求等待什么 gate，旧请求释放什么 owner，失败是否留下半套可见状态？" },
-    ],
-  },
-};
 
 const lessonDrills: Record<string, LessonDrill> = {
   D01: {
@@ -2378,204 +2359,114 @@ function invariantExplanation(point: string, detail: LessonDetail) {
 
 function Lecture({ lesson, project }: { lesson: Lesson; project: ProjectKey }) {
   const detail = lessonDetails[lesson.id];
-  const study = projectStudyGuides[project];
   const drill = lessonDrills[lesson.id];
+  const trace = detail.trace ?? lesson.flow.map((step, index) => ({
+    name: step,
+    input: traceInput(lesson.flow, index),
+    responsibility: explainTerm(step),
+    output: traceOutput(lesson.flow, index),
+    anchor: index === 0 ? detail.evidence[0].symbol : index === lesson.flow.length - 1 ? detail.evidence.at(-1)?.symbol ?? step : `${lesson.flow[index - 1]} → ${step}`,
+  }));
+  const inferenceCount = detail.evidence.filter((item) => item.kind === "架构推断").length;
 
   return (
     <article className="lecture">
       <section id="start">
         <div className="section-number">01</div>
         <div className="section-wide">
-          <h2>架构导读：先定位这一层的职责</h2>
-          <p className="section-lead">先把它放回完整 Agent 运行时：它解决哪类系统压力、拥有哪段状态、把控制权交给谁。源码只是这些设计选择的证据。</p>
-          <div className="beginner-overview">
-            <div><small>ARCHITECTURE PRESSURE</small><h3>系统为什么需要这一层？</h3><p>{lesson.why}</p></div>
-            <div><small>MENTAL MODEL</small><h3>先建立一个可用的心智模型</h3><p>{lesson.model}</p></div>
-            <div><small>LEARNING OUTCOME</small><h3>学完后要能解释什么</h3><p>{lesson.motto}</p></div>
-          </div>
-        </div>
-      </section>
-      <section id="terms">
-        <div className="section-number">02</div>
-        <div className="section-wide">
-          <h2>建立本课的架构词汇表</h2>
-          <p className="section-lead">不背名词定义，只识别职责边界：它接收什么、拥有什么状态、允许产生什么副作用，以及明确不负责什么。</p>
-          <div className="glossary-grid">
-            {lesson.flow.slice(0, 4).map((term, index) => (
-              <div key={term}><span>{String(index + 1).padStart(2, "0")}</span><strong>{term}</strong><p>{explainTerm(term)}</p></div>
-            ))}
+          <h2>为什么“{lesson.points[0]}”值得单独设计</h2>
+          <div className="editorial-intro">
+            <p className="editorial-lead">{lesson.why}</p>
+            <p>{detail.architecture}</p>
+            <p className="plain-analogy"><b>换个直观说法。</b>{lesson.model}</p>
+            <p className="editorial-judgment" style={{ borderColor: lesson.groupColor }}>{lesson.motto}</p>
           </div>
         </div>
       </section>
       <section id="flow">
-        <div className="section-number">03</div>
+        <div className="section-number">02</div>
         <div className="section-wide">
-          <h2>运行路径：控制权怎样穿过整条链路</h2>
-          <p className="section-lead">观察控制权、数据与状态怎样一起移动。重点不是箭头数量，而是哪一步创建状态、哪一步只做转换、哪一步可能产生真实副作用。</p>
+          <h2>从 {lesson.flow[0]} 到 {lesson.flow.at(-1)}，控制权怎样移动</h2>
+          <p className="section-lead">从 <code>{lesson.flow[0]}</code> 到 <code>{lesson.flow.at(-1)}</code>，每个节点只完成一段工作。先看控制权如何移动，再决定哪些函数值得深入。</p>
           <FlowDiagram steps={lesson.flow} color={lesson.groupColor} />
-        </div>
-      </section>
-      <section id="code-tour">
-        <div className="section-number">04</div>
-        <div className="section-wide">
-          <h2>把架构还原成执行协议</h2>
-          <p className="section-lead">下面是明确标注的等价伪代码，用来暴露控制流，而不是冒充仓库原文。先找输入与等待点，再用下一节的真实文件和符号核对。</p>
-          <div className="beginner-code-tour">
-            <div className="annotated-code" aria-label={`${lesson.id} 教学示意代码`}>
-              <div><span>concept sketch</span><b>{lesson.id.toLowerCase()}_flow</b></div>
-              <pre><code>{lesson.code.split("\n").map((line, index) => <span key={`${line}-${index}`}><i>{String(index + 1).padStart(2, "0")}</i>{line || " "}</span>)}</code></pre>
-            </div>
-            <ol className="code-reading-guide">
-              <li><span>1</span><p><b>先找输入</b>从 <code>{lesson.flow[0]}</code> 开始，不要一上来研究每个函数。</p></li>
-              <li><span>2</span><p><b>再找接力</b>关注变量传给了谁，以及哪里出现 <code>await</code>、事件或回调。</p></li>
-              <li><span>3</span><p><b>最后找出口</b>确认结果怎样抵达 <code>{lesson.flow.at(-1)}</code>，以及失败时会在哪里停住。</p></li>
-            </ol>
-          </div>
+          <details className="concept-sketch">
+            <summary>展开等价伪代码：只用于理解控制流 <span>＋</span></summary>
+            <pre aria-label={`${lesson.id} 教学示意代码`}><code>{lesson.code}</code></pre>
+          </details>
         </div>
       </section>
       <section id="evidence">
-        <div className="section-number">05</div>
+        <div className="section-number">03</div>
         <div className="section-wide">
-          <h2>代码证据：固定提交、精确到行</h2>
-          <p className="section-lead">本课链接固定在 <code>{projects[project].revision.slice(0, 12)}</code>，不会随主分支漂移。代码事实来自实现本身；架构推断会单独标注，避免把作者未明说的解释伪装成源码原文。</p>
-          <div className="evidence-grid">
+          <h2>沿着 {detail.evidence[0].symbol} 追下去</h2>
+          <p className="section-lead">下面的链接固定在提交 <code>{projects[project].revision.slice(0, 12)}</code>。实现、测试和教程推断分开标注；代码没有证明的部分，不借术语补齐。</p>
+          <div className="evidence-list">
             {detail.evidence.map((item, index) => (
-              <a className="evidence-card" href={repoSourceUrl(project, item.file, item.lineStart, item.lineEnd)} target="_blank" rel="noreferrer" key={`${item.file}-${item.symbol}`}>
-                <span><small>{item.kind ?? "代码证据"} · {String(index + 1).padStart(2, "0")}</small><b>↗</b></span>
-                <code>{item.file}</code>
-                <strong>{item.symbol}{item.lineStart ? ` · L${item.lineStart}${item.lineEnd ? `–${item.lineEnd}` : ""}` : ""}</strong>
+              <article key={`${item.file}-${item.symbol}`}>
+                <header>
+                  <span>{String(index + 1).padStart(2, "0")}</span>
+                  <a href={repoSourceUrl(project, item.file, item.lineStart, item.lineEnd)} target="_blank" rel="noreferrer">
+                    <strong>{item.symbol}</strong>
+                    <code>{item.file}{item.lineStart ? ` · L${item.lineStart}${item.lineEnd ? `–${item.lineEnd}` : ""}` : ""}</code>
+                  </a>
+                  <small>{item.kind ?? "代码证据"} ↗</small>
+                </header>
                 <p>{item.note}</p>
-              </a>
+              </article>
             ))}
           </div>
-        </div>
-      </section>
-      <section id="architecture">
-        <div className="section-number">06</div>
-        <div className="section-wide">
-          <h2>状态归属、控制边界与上下游</h2>
-          <div className="architecture-card" style={{ borderColor: lesson.groupColor }}>
-            <small>BOUNDARY / OWNERSHIP</small>
-            <p>{detail.architecture}</p>
-            <div className="architecture-axis">
-              <code>{lesson.flow[0]}</code><i>→</i><strong>{lesson.title.split("：")[0]}</strong><i>→</i><code>{lesson.flow.at(-1)}</code>
-            </div>
-          </div>
-        </div>
-      </section>
-      <section id="trace-audit">
-        <div className="section-number">07</div>
-        <div className="section-wide">
-          <h2>逐节点调用链审计</h2>
-          <p className="section-lead">流程图只告诉你“谁接谁”。这张表继续追问每一步拿到什么、只允许做什么、必须交出什么。读源码时逐行打勾。</p>
-          <div className="trace-audit" role="table" aria-label={`${lesson.id} 调用链审计表`}>
-            <div className="trace-audit-head" role="row"><span>节点</span><span>输入</span><span>本层职责</span><span>输出 / 检查点</span></div>
-            {(detail.trace ?? lesson.flow.map((step, index) => ({
-              name: step,
-              input: traceInput(lesson.flow, index),
-              responsibility: explainTerm(step),
-              output: traceOutput(lesson.flow, index),
-              anchor: index === 0 ? detail.evidence[0].symbol : index === lesson.flow.length - 1 ? detail.evidence.at(-1)?.symbol ?? step : `${lesson.flow[index - 1]} → ${step}`,
-            }))).map((step, index) => (
-              <div className="trace-audit-row" role="row" key={`${step.name}-${index}`}>
-                <strong><small>{String(index + 1).padStart(2, "0")}</small>{step.name}</strong>
-                <p>{step.input}</p>
+          <h3 className="argument-subhead">把这些证据串成一条执行链</h3>
+          <ol className="trace-story" aria-label={`${lesson.id} 调用链说明`}>
+            {trace.map((step, index) => (
+              <li key={`${step.name}-${index}`}>
+                <header><span>{String(index + 1).padStart(2, "0")}</span><strong>{step.name}</strong><code>{step.anchor}</code></header>
                 <p>{step.responsibility}</p>
-                <p>{step.output}<code>检查：{step.anchor}</code></p>
-              </div>
+                <p><b>输入：</b>{step.input}<br /><b>交出：</b>{step.output}</p>
+              </li>
             ))}
-          </div>
+          </ol>
         </div>
       </section>
       <section id="invariants">
-        <div className="section-number">08</div>
+        <div className="section-number">04</div>
         <div className="section-wide">
-          <h2>三副“源码眼镜”与设计不变量</h2>
-          <p className="section-lead">真正的架构不在目录名里，而在系统始终不愿破坏的约束里。先用路线级问题定位，再用本课不变量判断实现是否跑偏。</p>
-          <div className="study-lenses">
-            {study.lenses.map((lens, index) => <div key={lens.title}><span>LENS 0{index + 1}</span><strong>{lens.title}</strong><p>{lens.question}</p></div>)}
-          </div>
-          <div className="invariant-grid">
+          <h2>如果“{lesson.points[0]}”被破坏</h2>
+          <div className="invariant-prose">
             {lesson.points.map((point, index) => (
-              <div key={point}><span>INVARIANT 0{index + 1}</span><h3>{point}</h3><p>{invariantExplanation(point, detail)}</p></div>
+              <article key={point}><span>{String(index + 1).padStart(2, "0")}</span><div><h3>{point}</h3><p>{invariantExplanation(point, detail)}</p></div></article>
             ))}
           </div>
         </div>
       </section>
       <section id="failure">
-        <div className="section-number">09</div>
+        <div className="section-number">05</div>
         <div className="section-wide">
-          <h2>失败路径：故意拆坏，再学会定位</h2>
-          <p className="section-lead">只读成功路径容易产生“我好像懂了”的错觉。下面把一个边界主动破坏，观察症状，再沿最短证据链回到根因。</p>
-          <div className="failure-lab">
-            <div><small>01 · INJECT</small><h3>怎样制造故障</h3><p>{drill.failureTrigger}</p></div>
-            <div><small>02 · OBSERVE</small><h3>你会先看到什么</h3><p>{drill.failureSymptom}</p></div>
-            <div><small>03 · TRACE</small><h3>最短调试路径</h3><p>{drill.debugPath}</p></div>
-          </div>
-          <div className="debug-checkpoints">
-            <span>建议断点</span>
-            {detail.evidence.map((item) => <code key={item.symbol}>{item.symbol}</code>)}
-            <span>最终出口</span><code>{lesson.flow.at(-1)}</code>
-          </div>
-        </div>
-      </section>
-      <section id="practice">
-        <div className="section-number">10</div>
-        <div className="section-wide">
-          <h2>35 分钟动手实验：留下可检查的产出</h2>
-          <p className="section-lead">不是“把仓库跑起来”就算学会。实验必须留下 trace、边界表或前后对照，别人才能复查你的结论。</p>
-          <div className="practice-lab deep-practice">
-            <div>
-              <small>HANDS-ON LAB</small>
-              <h3>{lesson.id} · 最小验证实验</h3>
-              <ol>
-                <li><b>0–8 分钟：</b>打开 <code>{detail.evidence[0].file}</code>，搜索 <code>{detail.evidence[0].symbol}</code>，只追一层调用方与一层被调用方。</li>
-                <li><b>8–16 分钟：</b>打开 <code>{detail.evidence[1].file}</code>，确认第二个证据是否与第一个共享同一状态、事件或协议。</li>
-                <li><b>16–28 分钟：</b>{drill.experiment}</li>
-                <li><b>28–35 分钟：</b>把观察结果映射回 <code>{lesson.flow.join(" → ")}</code>，标出第一次发生分歧的位置。</li>
-              </ol>
-            </div>
-            <div className="lab-deliverable">
-              <small>ACCEPTANCE CRITERIA</small>
-              <h3>交付物，而不是读后感</h3>
-              <p>{drill.deliverable}</p>
-              <ul>
-                <li><span>□</span> 能指出状态真正的拥有者</li>
-                <li><span>□</span> 能指出第一个真实副作用发生点</li>
-                <li><span>□</span> 能说清一个可替换边界及替换代价</li>
-                <li><span>□</span> 能用两个源码锚点反证自己的结论</li>
-              </ul>
-            </div>
+          <h2>用一次失败检验“{lesson.points[1]}”</h2>
+          <div className="failure-story">
+            <p><b>先制造问题。</b>{drill.failureTrigger}</p>
+            <p><b>再观察系统。</b>{drill.failureSymptom}</p>
+            <p><b>如果现象不对。</b>{drill.debugPath}</p>
+            <p><b>真正动手时。</b>{drill.experiment}</p>
+            <p className="failure-deliverable"><b>最后应留下：</b>{drill.deliverable}</p>
           </div>
         </div>
       </section>
       <section id="review">
-        <div className="section-number">11</div>
+        <div className="section-number">06</div>
         <div className="section-wide">
-          <h2>架构评审题：能答到什么深度，才算真的会了</h2>
+          <h2>这条结论适用到哪里</h2>
+          <p className="evidence-boundary">本课用了 {detail.evidence.length} 个源码位置，其中 {inferenceCount} 个明确标为架构推断。固定提交只能证明这一版实现；它不能证明所有 Agent 都应采用同一种结构。</p>
           <div className="review-questions">
             <details>
               <summary><span>Q1</span><strong>{drill.reviewQuestion}</strong><i>展开参考答案 ＋</i></summary>
               <p>{drill.reviewAnswer}</p>
             </details>
             <details>
-              <summary><span>Q2</span><strong>故障实验出现什么现象，才算真的支持本课结论？</strong><i>展开参考答案 ＋</i></summary>
-              <p>{drill.failureSymptom}</p>
-            </details>
-            <details>
-              <summary><span>Q3</span><strong>如果结果不符合预期，最短应从哪条调用链开始定位？</strong><i>展开参考答案 ＋</i></summary>
-              <p>{drill.debugPath}</p>
-            </details>
-            <details>
-              <summary><span>Q4</span><strong>本课结论在源码中由哪两个位置共同支持？</strong><i>展开参考答案 ＋</i></summary>
+              <summary><span>Q2</span><strong>哪两处代码一起证明了本课结论？</strong><i>展开参考答案 ＋</i></summary>
               <p><code>{detail.evidence[0].file}</code> 的 <code>{detail.evidence[0].symbol}</code> 给出第一侧边界；<code>{detail.evidence[1].file}</code> 的 <code>{detail.evidence[1].symbol}</code> 给出组装、消费或生命周期的另一侧。只引用其中一个还不足以证明完整调用关系。</p>
             </details>
           </div>
         </div>
-      </section>
-      <section id="takeaway">
-        <div className="section-number">12</div>
-        <div className="section-wide"><h2>一句话带走</h2><div className="takeaway">{lesson.takeaway}</div></div>
       </section>
     </article>
   );
